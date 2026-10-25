@@ -65,6 +65,8 @@ details.card>summary{cursor:pointer;font-weight:600;list-style:none;display:flex
 details.card>summary::after{content:"+";color:var(--muted)}
 details.card[open]>summary::after{content:"–"}
 details.card>summary::-webkit-details-marker{display:none}
+.card details>summary{cursor:pointer;padding:8px 0}
+.card details+details{border-top:1px solid var(--line)}
 .pre{white-space:pre-wrap}
 .ex{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:0 0 10px}
 .ex .nm{font-weight:650}
@@ -549,6 +551,34 @@ function drawChart(el, series, fmt, axisFmt = fmtNum) {
 function renderSettings() {
   const n = live().length;
   view(`
+  <section class="card">
+    <h3>How to use</h3>
+    <details><summary><b>Train</b></summary><ol style="font-size:14px;padding-left:20px">
+      <li>On <b>Train</b>, pick the day (A, B, C) and the week. The app suggests the next session not yet done.</li>
+      <li>Tap <b>Start workout</b>: it goes warm-up › each exercise › stretching. Use <b>Next</b> and <b>Back</b>.</li>
+      <li>On each exercise, type the weight, reps/time and notes. "Last time" shows what you did before.</li>
+      <li>Tap <b>Set done</b> after each set: it ticks the set and starts the rest timer.</li>
+      <li>Tap <b>Finish</b> at the end. You can also tap any exercise on the Train page to log it without workout mode.</li>
+    </ol></details>
+    <details><summary><b>Timers</b></summary><ul style="font-size:14px;padding-left:20px">
+      <li><b>Rest</b>: countdown between sets (set from the programme's rest time).</li>
+      <li><b>Timer</b>: countdown for timed exercises, like a 30" plank.</li>
+      <li><b>Intervals</b>: work/rest rounds, like Tabata 20"/10".</li>
+      <li><b>EMOM</b>: a beep at the start of every minute.</li>
+      <li><b>Stopwatch</b>: for "as fast as possible" workouts.</li>
+      <li>The app picks the right one for each exercise; change it with the buttons and −/+. It beeps 3-2-1 and at the end. Keep the volume up and the app open on screen (iPhone stops sounds when the screen locks or you switch app).</li>
+    </ul></details>
+    <details><summary><b>Import a new programme</b></summary><ol style="font-size:14px;padding-left:20px">
+      <li>In the trainer's email, tap each Word attachment (Giorno A, B, C) › Share › <b>Save to Files</b>.</li>
+      <li>In the app, go to <b>Cycles</b> › <b>Import programme</b> and select all three files together.</li>
+      <li>Check the name (e.g. Cycle 52) and tap <b>Add cycle</b>. It becomes the current cycle.</li>
+      <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
+    </ol></details>
+    <details><summary><b>Videos</b></summary><p style="font-size:14px">Each exercise has ▶ buttons that search YouTube for short demos. Found one you like? In YouTube tap Share › Copy link, then in the app tap 📌 <b>Pin video</b> and paste it: that exercise will always open that video.</p></details>
+    <details><summary><b>Progress</b></summary><p style="font-size:14px">Search an exercise to see charts of weight, reps or time across all cycles. Tap the chart to see each point. Old values come from your notes, so a few may be missing.</p></details>
+    <details><summary><b>Share with trainer</b></summary><p style="font-size:14px">Write questions in the "Question for trainer" box of any exercise. Then tap <b>Share with trainer</b> (bottom of Train, or on a cycle's page), pick a week or the whole cycle, and send it by WhatsApp or email.</p></details>
+    <details><summary><b>Backup and other devices</b></summary><p style="font-size:14px">Everything is saved on this phone and synced to your private GitHub repo when online. On a new phone or laptop, open the app and paste the same access key (or a new one). <b>Download Excel</b> gives you a spreadsheet like your old one, one tab per cycle. When the key expires, the app shows a sync problem: create a new key and paste it below.</p></details>
+  </section>
   <section class="card">
     <h3>Sync with your private data</h3>
     <p class="muted" style="font-size:14px">Your log is saved on this phone and copied to your private GitHub repo, so it's backed up and works on any device.</p>
