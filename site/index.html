@@ -379,7 +379,7 @@ function rxChips(w) {
 function renderTrain() {
   const c = currentCycle();
   if (!c) {
-    view(`<div class="card empty"><h2>No training data yet</h2><p>${settings.token ? "Syncing your data…" : "Connect your private data in Settings to load all your cycles, or import a programme from your trainer's Word files."}</p>
+    view(`<div class="card empty"><h2>No training data yet</h2><p>${settings.token ? "Syncing your data…" : "Connect your private data in Settings to load all your cycles, or import a programme from your trainer's Word files. Added the app to your Home Screen? Paste your access key again there: iPhone keeps it separate from Safari."}</p>
       <div class="row" style="justify-content:center;flex-wrap:wrap"><button class="btn" data-act="tab" data-tab="settings">Settings</button><button class="btn ghost" data-act="import">Import programme</button></div></div>`);
     return;
   }
