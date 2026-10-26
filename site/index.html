@@ -299,6 +299,9 @@ function nextSession(c) {
   for (let k = 0; k < n; k++) for (let di = 0; di < c.days.length; di++) if (!sessionDone(c, di, k)) return { cid: c.id, di, k };
   return { cid: c.id, di: 0, k: 0 };
 }
+// Cycles brought in from the old spreadsheet, logged before the app (Cycle 51 is the first one done in the app).
+const isOld = (c) => c.source === "numbers" && c.id !== "c51";
+const cName = (c) => (isOld(c) ? `${c.label} (old)` : c.label);
 const nameLines = (n) => String(n || "").split(" / ").map((s) => s.trim()).filter((s) => s && s !== "+");
 const nameHtml = (n) => nameLines(n).map((s) => `<span>${esc(s)}</span>`).join("");
 
@@ -427,7 +430,7 @@ function lastTime(c, e, k) {
   for (let j = k - 1; j >= 0; j--) if (logged(e.weeks[j]) && logText(e.weeks[j])) cands.push({ label: `This cycle · week ${e.weeks[j].w}`, w: e.weeks[j] });
   const g = getIndex().get(keyOf(e.name));
   if (g) g.items.filter((it) => !it.mv && (it.c.order ?? 0) < (c.order ?? 0) && logText(it.w)).reverse()
-    .forEach((it) => cands.push({ label: `${it.c.label} · week ${it.w.w}`, w: it.w }));
+    .forEach((it) => cands.push({ label: `${cName(it.c)} · week ${it.w.w}`, w: it.w }));
   const same = cands.find((x) => variantOf(x.w) === v);
   if (same || !cands.length) return same || null;
   return Object.assign({ other: variantOf(cands[0].w) }, cands[0]);
@@ -576,7 +579,7 @@ function renderCycles() {
   <div class="card list">${cs.map((x) => {
     const all = x.days.flatMap((d) => d.exercises.flatMap((e) => e.weeks));
     const n = all.filter(logged).length;
-    return `<button type="button" class="item" data-act="cycle" data-id="${esc(x.id)}"><span class="grow"><b>${esc(x.label)} ${x === cur ? '<span class="pill">Current</span>' : ""}</b><small class="muted">${esc([x.when, x.duration].filter(Boolean).join(" · "))}${all.length ? ` · ${n}/${all.length} logged` : ""}</small></span><span class="chev">›</span></button>`;
+    return `<button type="button" class="item" data-act="cycle" data-id="${esc(x.id)}"><span class="grow"><b>${esc(cName(x))} ${x === cur ? '<span class="pill">Current</span>' : ""}</b><small class="muted">${esc([x.when, x.duration].filter(Boolean).join(" · "))}${all.length ? ` · ${n}/${all.length} logged` : ""}</small></span><span class="chev">›</span></button>`;
   }).join("") || '<p class="muted">No cycles yet.</p>'}</div>`);
 }
 
@@ -587,7 +590,7 @@ function renderCycle(c) {
   view(`
   <button class="link" data-act="cycles-back">‹ All cycles</button>
   <section class="card">
-    <h2>${esc(c.label)}</h2>
+    <h2>${esc(cName(c))}</h2>
     <p class="muted">${esc([c.when, c.duration, c.tag].filter(Boolean).join(" · "))}</p>
     <div class="row" style="flex-wrap:wrap;margin-top:8px">
       ${cur ? '<span class="pill">Current cycle</span>' : `<button class="btn small" data-act="setcur" data-id="${esc(c.id)}">Make current</button>`}
@@ -668,7 +671,7 @@ function renderExercise(g) {
     <div class="stats"><div><small class="muted">Latest</small><b>${METRICS[metric][1](vals.at(-1))}</b></div><div><small class="muted">Best</small><b>${METRICS[metric][1](Math.max(...vals))}</b></div><div><small class="muted">Entries</small><b>${vals.length}</b></div></div>
     <div class="chart" id="chart"></div>` : `<p class="muted">No weights, reps or times found in your notes for this exercise yet.</p>`}
   </section>
-  <section class="card"><h3>History</h3><div class="hist">${hist.map((it) => `<div><small>${esc(it.c.label)} · Day ${esc(it.d.id)} · week ${esc(it.w.w)} — ${esc([it.w.sets, it.w.reps].filter(Boolean).join(" × "))}</small><p>${logText(it.w) ? esc(logText(it.w)) : '<span class="muted">—</span>'}</p></div>`).join("")}</div></section>`);
+  <section class="card"><h3>History</h3><div class="hist">${hist.map((it) => `<div><small>${esc(cName(it.c))} · Day ${esc(it.d.id)} · week ${esc(it.w.w)} — ${esc([it.w.sets, it.w.reps].filter(Boolean).join(" × "))}</small><p>${logText(it.w) ? esc(logText(it.w)) : '<span class="muted">—</span>'}</p></div>`).join("")}</div></section>`);
   if (series.length) drawChart($("#chart"), series, METRICS[metric][1], metric === "secs" ? (v) => fmtClock(v) : fmtNum);
 }
 function niceTicks(min, max, n = 4) {
@@ -703,7 +706,7 @@ function drawChart(el, series, fmt, axisFmt = fmtNum) {
     const p = series[i];
     hair.setAttribute("x1", X(i)); hair.setAttribute("x2", X(i)); hair.setAttribute("visibility", "visible");
     hdot.setAttribute("cx", X(i)); hdot.setAttribute("cy", Y(p.v)); hdot.setAttribute("visibility", "visible");
-    tip.innerHTML = `<b>${esc(fmt(p.v))}</b><br>${esc(p.it.c.label)} · Day ${esc(p.it.d.id)} · wk ${esc(p.it.w.w)}<br>${esc([p.it.w.sets, p.it.w.reps].filter(Boolean).join(" × "))}<br><span style="opacity:.8">${esc(logText(p.it.w).slice(0, 120))}</span>`;
+    tip.innerHTML = `<b>${esc(fmt(p.v))}</b><br>${esc(cName(p.it.c))} · Day ${esc(p.it.d.id)} · wk ${esc(p.it.w.w)}<br>${esc([p.it.w.sets, p.it.w.reps].filter(Boolean).join(" × "))}<br><span style="opacity:.8">${esc(logText(p.it.w).slice(0, 120))}</span>`;
     tip.hidden = false;
     tip.style.left = Math.min(Math.max(X(i), 110), W - 110) + "px";
     tip.style.top = Math.max(0, Y(p.v) - tip.offsetHeight - 14) + "px";
@@ -1126,7 +1129,7 @@ function renderTimer() {
 /* ---------- share with trainer ---------- */
 function shareText(c, k) {
   const weeks = k >= 0 ? [k] : Array.from({ length: weekCount(c) }, (_, j) => j);
-  const out = [`${c.label}${k >= 0 ? ` · week ${weekLabel(c, k)}` : ""}`];
+  const out = [`${cName(c)}${k >= 0 ? ` · week ${weekLabel(c, k)}` : ""}`];
   for (const d of c.days) {
     const lines = [];
     for (const e of d.exercises) {
@@ -1257,7 +1260,7 @@ async function exportExcel(only) {
       r = row(); c.days.forEach((d, i) => (r[i * W] = d.cooldown || "")); aoa.push(r);
       const ws = X.utils.aoa_to_sheet(aoa);
       ws["!cols"] = c.days.flatMap(() => [{ wch: 36 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 36 }]);
-      let name = (c.title || [c.label, c.when && `(${c.when})`].filter(Boolean).join(" ")).replace(/[\[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31);
+      let name = ((isOld(c) ? "(old) " : "") + (c.title || [c.label, c.when && `(${c.when})`].filter(Boolean).join(" "))).replace(/[\[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31);
       for (let k = 2; used.has(name); k++) name = name.slice(0, 27) + " " + k;
       used.add(name);
       X.utils.book_append_sheet(wb, ws, name);
