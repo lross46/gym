@@ -553,7 +553,8 @@ function renderTrain() {
   }).join("") || `<div class="card empty"><p>No exercises for this week.</p></div>`}
   ${day.warmup ? `<details class="card"><summary>Warm-up</summary><p class="pre">${nl(day.warmup)}</p></details>` : ""}
   ${day.cooldown ? `<details class="card"><summary>Stretching</summary><p class="pre">${nl(day.cooldown)}</p></details>` : ""}
-  <button class="btn ghost" style="width:100%;margin:4px 0 16px" data-act="share" data-id="${esc(c.id)}" data-k="${k}">Share with trainer</button>`);
+  <button class="btn ghost" style="width:100%;margin:4px 0 16px" data-act="share" data-id="${esc(c.id)}" data-k="${k}">Share with trainer</button>
+  ${nDone ? `<button class="btn danger" style="width:100%;margin:0 0 16px" data-act="reset-day" data-id="${esc(c.id)}" data-di="${di}" data-k="${k}">↺ Reset Day ${esc(day.id)} · Week ${esc(weekLabel(c, k))}</button>` : ""}`);
 }
 function openPick() {
   const c = currentCycle(); if (!c || !ui.sel) return;
@@ -735,6 +736,7 @@ function renderSettings() {
       <li><b>LAST</b> shows what you did last time on the same variant (1" iso with 1" iso).</li>
       <li><b>✎ Notes</b> opens a free box for notes on that exercise this week. In the Excel export they go under the kg and reps.</li>
       <li><b>Finish workout</b> marks every exercise of the day as done. To leave without that, tap ✕ (what you typed is kept).</li>
+      <li>Tapped something by mistake? <b>↺</b> (top right in the workout, or <b>Reset Day</b> at the bottom of Today) clears that day and week.</li>
     </ol></details>
     <details><summary><b>Timers</b></summary><ul style="font-size:14px;padding-left:20px">
       <li><b>Rest</b>: countdown between sets (set from the programme's rest time).</li>
@@ -904,7 +906,7 @@ function weightBoxes(e, w, lt, ei, skip = []) {
 }
 function renderWo() {
   const { c, d, list } = woExercises();
-  const head = `<div class="head"><button class="ib" data-act="wo-close" aria-label="Close workout">✕</button><b>${esc(c.label)} · Day ${esc(d.id)} · Week ${esc(weekLabel(c, wo.k))}</b><span style="width:44px"></span></div>`;
+  const head = `<div class="head"><button class="ib" data-act="wo-close" aria-label="Close workout">✕</button><b>${esc(c.label)} · Day ${esc(d.id)} · Week ${esc(weekLabel(c, wo.k))}</b><button class="ib" data-act="reset-day" data-id="${esc(c.id)}" data-di="${wo.di}" data-k="${wo.k}" aria-label="Reset this day">↺</button></div>`;
   const body = (d.warmup ? `<details class="wl"><summary><b>Warm-up</b></summary><p class="pre" style="margin-top:8px">${nl(d.warmup)}</p></details>` : "")
     + list.map(({ e, ei }, i) => woCard(c, e, ei, i, list.length)).join("")
     + `<details class="wl"><summary><b>Stretching</b></summary><p class="pre" style="margin-top:8px">${nl(d.cooldown || "Stretch the muscles you worked.")}</p></details>`
@@ -1421,6 +1423,17 @@ document.addEventListener("click", (ev) => {
     case "json": exportJSON(); break;
     case "restore": $("#fRestore").click(); break;
     case "theme": LS.set("gym.theme", D.t); applyTheme(); render(); break;
+    case "reset-day": {
+      // Clears everything logged for one day and week (taps made by mistake); a fresh "at" makes the reset win when syncing.
+      const c = findCycle(D.id), d = c && c.days[num("di")], k = num("k");
+      if (!d || !confirm(`Reset ${c.label} · Day ${d.id} · Week ${weekLabel(c, k)}? This clears the ticks, kg, reps and notes of that day.`)) break;
+      const now = Date.now();
+      d.exercises.forEach((e) => { const w = e.weeks[k]; if (!w) return; LOGF.forEach((f) => delete w[f]); w.at = now; });
+      if (wo && wo.cid === c.id && wo.di === num("di") && wo.k === k) { wo.sets = {}; wo.step = 1; save(); renderWo(); $("#wo").scrollTop = 0; }
+      else { save(); render(); }
+      toast("Day reset");
+      break;
+    }
     case "wo-close": if (confirm("Leave the workout? What you've logged is saved.")) endWorkout(); break;
     case "wo-go": {
       const n = woExercises().list.length;
