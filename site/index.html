@@ -77,6 +77,7 @@ details.card>summary::-webkit-details-marker{display:none}
 .rx b em{font-style:normal;color:var(--muted);font-weight:500;margin-right:4px}
 .mylog{margin-top:8px;font-size:14px;white-space:pre-wrap}
 .mylog.none{color:var(--muted)}
+.pren{margin-top:8px;font-size:14px;font-weight:600}
 .q{margin-top:6px;font-size:14px;color:var(--warn);white-space:pre-wrap}
 .tick{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto;font-size:13px}
 .tick.on{background:var(--good);border-color:var(--good);color:#fff}
@@ -249,14 +250,22 @@ function parseTime(s) {
   return m[3] ? +m[3] : +m[1] * 60 + (m[2] ? +m[2] : 0);
 }
 const isTimeOnly = (s) => parseTime(s) != null && !/\d/.test(normQuotes(s).replace(new RegExp(TIME_RE.source, "g"), ""));
+// "2x20; 3" on a pre-fatigue exercise means 3 sets, each starting with 2x20 of the pre-fatigue move.
 function parseSets(s) {
-  let total = 0;
-  for (const part of String(s || "").split(/[;:]/)) {
-    if (/['"’]/.test(part) && !/\d\s*x/i.test(part)) continue;
-    const m = part.match(/(\d+)\s*x/i) || part.match(/(\d+)/);
-    if (m) total += +m[1];
-  }
-  return total > 0 && total <= 30 ? total : null;
+  const parts = String(s || "").split(/[;:]/);
+  const main = parts.length > 1 ? parts.at(-1) : parts[0];
+  if (/['"’]/.test(main) && !/\d\s*x/i.test(main)) return null;
+  const m = main.match(/(\d+)\s*x/i) || main.match(/(\d+)/);
+  const n = m ? +m[1] : 0;
+  return n > 0 && n <= 30 ? n : null;
+}
+function preNote(e, w) {
+  const parts = String(w.sets || "").split(/[;:]/);
+  if (parts.length < 2 || !/pre-?affaticante/i.test(e.name)) return "";
+  const mv = moves(e.name);
+  if (mv.length < 2) return "";
+  const pre = parts.slice(0, -1).join(";").trim();
+  return `Each set: ${pre} ${mv[0]}, then ${w.reps || ""} ${mv.slice(1).join(" + ")}`.replace(/\s+/g, " ").trim();
 }
 function kgOf(w) {
   if (w.kg) { const v = parseFloat(String(w.kg).replace(",", ".")); if (!isNaN(v)) return v; }
@@ -403,7 +412,7 @@ function renderTrain() {
     const w = e.weeks[k];
     return `<button type="button" class="ex" data-act="log" data-cid="${esc(c.id)}" data-di="${di}" data-ei="${ei}" data-k="${k}">
       <div class="row" style="align-items:flex-start"><div class="nm grow">${nameHtml(e.name)}</div><span class="tick${logged(w) ? " on" : ""}">${logged(w) ? "✓" : ""}</span></div>
-      ${rxChips(w)}
+      ${rxChips(w)}${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
       <div class="mylog${logText(w) ? "" : " none"}">${logText(w) ? esc(logText(w)) : "Tap to log weight and notes"}</div>${qHtml(w)}</button>`;
   }).join("") || `<div class="card empty"><p>No exercises for this week.</p></div>`}
   ${day.cooldown ? `<details class="card"><summary>Stretching</summary><p class="pre">${nl(day.cooldown)}</p></details>` : ""}
@@ -630,7 +639,7 @@ function openLog(cid, di, ei, k) {
   openSheet(`
     <div class="nm" style="font-weight:700;font-size:18px">${nameHtml(e.name)}</div>
     <p class="muted" style="font-size:14px">${esc(c.label)} · Day ${esc(r.d.id)} · Week ${esc(w.w)}</p>
-    ${rxChips(w)}
+    ${rxChips(w)}${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
     ${e.desc ? `<p class="pre muted" style="font-size:14px">${nl(e.desc)}</p>` : ""}
     ${lt ? `<p style="font-size:14px"><b>Last time</b> <span class="muted">(${esc(lt.label)})</span><br>${esc(logText(lt.w))}</p>` : ""}
     <div class="row"><label class="f grow"><span>Weight (kg)</span><input id="fKg" inputmode="decimal" value="${esc(w.kg || "")}" placeholder="${esc(lt && kgOf(lt.w) != null ? fmtNum(kgOf(lt.w)) : "")}"></label>
@@ -690,7 +699,7 @@ function renderWo() {
     const doneSets = wo.sets[ei] || 0;
     body = `<div class="lab">Exercise ${s} of ${list.length}</div>
       <div class="nm">${nameHtml(e.name)}</div>
-      ${rxChips(w)}
+      ${rxChips(w)}${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
       ${e.desc ? `<p class="pre muted" style="font-size:14px">${nl(e.desc)}</p>` : ""}
       ${videoChips(e.name)}
       ${lt ? `<p style="font-size:14px;margin-top:10px"><b>Last time</b> <span class="muted">(${esc(lt.label)})</span><br>${esc(logText(lt.w))}</p>` : ""}
