@@ -186,7 +186,8 @@ label.f textarea{min-height:76px;resize:vertical}
 .wl.shut h3{font-size:15px}
 .wl.fin{opacity:.55}
 .wl h3{font-size:17px}
-.wn{margin-top:10px}
+.src{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.3}
+.wn{margin-top:8px}
 .wn summary{color:var(--accent-text);font-weight:750;cursor:pointer}
 .wn textarea{width:100%;min-height:70px;margin-top:8px;border:0;border-radius:12px;background:var(--soft);padding:10px;font:inherit;resize:vertical}
 .wl .pos{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-text);margin-bottom:4px}
@@ -551,10 +552,10 @@ function renderTrain() {
     <div class="chips"><span class="chip">Week ${esc(weekLabel(c, k))}</span><span class="chip">${exs.length} exercises</span>${nDone && !done ? `<span class="chip">${nDone} done</span>` : ""}</div>
     <button class="btn big" data-act="start">${PLAY} ${done ? "Open workout" : nDone ? "Continue" : "Start workout"}</button>
   </section>
-  <div class="lab">Exercises · tap to log</div>
+  <div class="lab">Exercises · tap one to start there</div>
   ${exs.map(({ e, ei }, i) => {
     const w = e.weeks[k], on = logged(w);
-    return `<button type="button" class="exl${on ? " on" : ""}" data-act="log" data-cid="${esc(c.id)}" data-di="${di}" data-ei="${ei}" data-k="${k}">
+    return `<button type="button" class="exl${on ? " on" : ""}" data-act="start-at" data-i="${i + 1}">
       <span class="n">${on ? "✓" : i + 1}</span>
       <span class="grow"><div class="t">${esc(shortName(e))}</div><div class="s">${esc(rxText(w))}</div>${logText(w) ? `<div class="mylog">${esc(logText(w))}</div>` : ""}</span><span class="chev">›</span></button>`;
   }).join("") || `<div class="card empty"><p>No exercises for this week.</p></div>`}
@@ -731,7 +732,7 @@ function renderSettings() {
     <details><summary><b>Today</b></summary><ul style="font-size:14px;padding-left:20px">
       <li>The week strip shows the days you actually trained (green).</li>
       <li>The big card is your next session not yet done. Tap <b>Change</b> to pick another day or week.</li>
-      <li>Below it, tap any exercise to log it without starting a workout.</li>
+      <li>Below it, tap any exercise to start the workout right at that exercise.</li>
     </ul></details>
     <details><summary><b>Workout</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>Tap <b>Start workout</b>. The header shows cycle, day and week. Warm-up is at the top, stretching at the bottom.</li>
@@ -944,6 +945,8 @@ function setKgPh(w, lt, j, m) {
   return (lt && kgList(lt.w, m)[j]) || lk[lk.length - 1] || "";
 }
 // Plain notes for this week; kg and reps are typed in the set rows.
+// Tiny line under the sets saying where the grey suggestions come from.
+const srcLine = (lt) => `<div class="src">Grey numbers: kg ${lt ? `from ${esc(lt.label)}${lt.other ? ` (${esc(lt.other.toLowerCase())})` : ""}, or your set before` : "from your set before (no earlier log)"} · reps from the programme</div>`;
 const notesBox = (ei, w) => `<details class="wn"${w.log ? " open" : ""}><summary>✎ Notes${w.log ? " ✓" : ""}</summary><textarea data-wf="log" data-ei="${ei}" placeholder="How did it feel?">${esc(w.log || "")}</textarea></details>`;
 // Target reps of one move: pre-fatigue "2x20; 3" → 20 for the first move; "10 + 18" → one number per move.
 function repTarget(e, w, m) {
@@ -1003,6 +1006,7 @@ function woCard(c, e, ei, i, total) {
       ${cols.map((m) => `<input data-wf="kgset" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="decimal" value="${esc(kgList(w, m)[j] || "")}" placeholder="${esc(setKgPh(w, lt, j, m))}" aria-label="Kg ${esc(m)} set ${j + 1}"><input data-wf="repm" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="numeric" value="${esc(repList(w, m)[j] || "")}" placeholder="${esc(repTarget(e, w, m) || (ltw && repList(ltw, m)[j]) || "")}" aria-label="Reps ${esc(m)} set ${j + 1}">`).join("")}
       <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Set ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("")}
     ${w.res ? `<p class="muted" style="font-size:13px">Logged before: ${esc(w.res)}</p>` : ""}
+    ${srcLine(lt)}
     ${notesBox(ei, w)}
   </section>`;
   }
@@ -1017,6 +1021,7 @@ function woCard(c, e, ei, i, total) {
       ${listy ? `<input data-wf="rep" data-ei="${ei}" data-i="${j}" inputmode="numeric" value="${esc(reps[j] || "")}" placeholder="${esc(ph)}" aria-label="Reps set ${j + 1}">` : ""}
       <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Set ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("")}
     ${listy ? "" : `<p class="muted" style="font-size:13px">Done: ${esc(w.res)}</p>`}
+    ${srcLine(lt)}
     ${notesBox(ei, w)}
   </section>`;
 }
@@ -1428,6 +1433,7 @@ document.addEventListener("click", (ev) => {
     case "selday": ui.sel.di = num("i"); saveUI(); render(); openPick(); break;
     case "selweek": ui.sel.k = num("k"); saveUI(); render(); openPick(); break;
     case "start": startWorkout(); break;
+    case "start-at": { startWorkout(); if (!wo) break; wo.step = num("i"); timerDefaults(); renderWo(); const cur = $("#wo .wl.cur"); if (cur) $("#wo").scrollTop = Math.max(0, cur.offsetTop - 70); break; }
     case "log": openLog(D.cid, num("di"), num("ei"), num("k")); break;
     case "savelog": saveLog(D.cid, num("di"), num("ei"), num("k")); break;
     case "close": closeSheet(); break;
