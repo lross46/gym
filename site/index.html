@@ -192,7 +192,7 @@ const LS = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
 };
 const DEFAULTS = { repo: "lross46/gym-data", path: "data/gym.json", token: "" };
-const LOGF = ["log", "kg", "res", "q", "done", "at"];
+const LOGF = ["log", "kg", "kgs", "res", "q", "done", "at"];
 let settings = Object.assign({}, DEFAULTS, LS.get("gym.settings", {}));
 let data = LS.get("gym.data", null) || { version: 1, updated: 0, current: null, cycles: [], videos: {} };
 data.videos = data.videos || {};
@@ -211,7 +211,8 @@ const live = () => data.cycles.filter((c) => !c.deleted);
 const byOrder = () => live().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 const findCycle = (id) => live().find((c) => c.id === id);
 const currentCycle = () => findCycle(data.current) || byOrder().at(-1) || null;
-const logged = (w) => !!(w && (w.done || w.log || w.kg || w.res));
+const hasKgs = (w) => !!(w && w.kgs && Object.values(w.kgs).some(Boolean));
+const logged = (w) => !!(w && (w.done || w.log || w.kg || hasKgs(w) || w.res));
 const qHtml = (w) => (w && w.q ? `<div class="q">❓ ${esc(w.q)}</div>` : "");
 let index = null;
 
@@ -267,12 +268,17 @@ function preNote(e, w) {
   const pre = parts.slice(0, -1).join(";").trim();
   return `Each set: ${pre} ${mv[0]}, then ${w.reps || ""} ${mv.slice(1).join(" + ")}`.replace(/\s+/g, " ").trim();
 }
-function kgOf(w) {
+// mv: one move of a combined exercise, whose weight is logged separately in w.kgs.
+function kgOf(w, mv) {
+  const num = (x) => { const v = parseFloat(String(x).replace(",", ".")); return isNaN(v) ? null : v; };
+  if (mv) return w.kgs && w.kgs[mv] ? num(w.kgs[mv]) : null;
+  if (hasKgs(w)) { const vs = Object.values(w.kgs).map(num).filter((v) => v != null); if (vs.length) return Math.max(...vs); }
   if (w.kg) { const v = parseFloat(String(w.kg).replace(",", ".")); if (!isNaN(v)) return v; }
-  let best = null, m;
+  // First weight mentioned in the note: later ones are usually asides ("max possible 25 kg").
   const re = /(\d+(?:[.,]\d+)?)\s*(?:kg|kkg|kili|kilos?|chili)\b/gi;
-  while ((m = re.exec(w.log || ""))) { const v = parseFloat(m[1].replace(",", ".")); if (v > 0 && v < 300 && (best == null || v > best)) best = v; }
-  return best;
+  let m;
+  while ((m = re.exec(w.log || ""))) { const v = parseFloat(m[1].replace(",", ".")); if (v > 0 && v < 300) return v; }
+  return null;
 }
 function repsOf(w) {
   let best = null, m;
@@ -297,7 +303,20 @@ function secsOf(w) {
 const fmtSecs = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`);
 const fmtNum = (v) => (Math.round(v * 10) / 10).toString();
 function logText(w) {
-  return [w.kg ? `${w.kg} kg` : "", w.res || "", w.log || ""].filter(Boolean).join(" · ");
+  const kgs = hasKgs(w) ? Object.entries(w.kgs).filter(([, v]) => v).map(([m, v]) => `${m} ${v} kg`).join(", ") : "";
+  return [kgs || (w.kg ? `${w.kg} kg` : ""), w.res || "", w.log || ""].filter(Boolean).join(" · ");
+}
+// One weight box per move when an exercise combines several (e.g. "Squat ss Hollow rock").
+function weightFields(e, w, lt, attr) {
+  const ms = moves(e.name);
+  const ph = (v) => (v != null ? fmtNum(v) : "");
+  if (ms.length < 2) return `<label class="f grow"><span>Weight (kg)</span><input ${attr}="kg" inputmode="decimal" value="${esc(w.kg || "")}" placeholder="${esc(lt ? ph(kgOf(lt.w)) : "")}"></label>`;
+  return ms.map((m) => `<label class="f grow" style="min-width:40%"><span>${esc(m)} (kg)</span><input ${attr}="kg" data-mv="${esc(m)}" inputmode="decimal" value="${esc((w.kgs && w.kgs[m]) || "")}" placeholder="${esc(lt ? ph(kgOf(lt.w, m)) : "")}"></label>`).join("");
+}
+function setWeight(w, inp) {
+  const v = inp.value.trim();
+  if (inp.dataset.mv) { w.kgs = Object.assign({}, w.kgs, { [inp.dataset.mv]: v }); if (!v) delete w.kgs[inp.dataset.mv]; }
+  else w.kg = v;
 }
 
 /* ---------- exercise index, history, videos ---------- */
@@ -313,7 +332,18 @@ function getIndex() {
     if (!g) map.set(k, (g = { key: k, name: e.name, items: [] }));
     g.name = e.name;
     e.weeks.forEach((w) => g.items.push({ c, d, e, w }));
+    const ms = moves(e.name);
+    if (ms.length > 1) for (const m of ms) {
+      const km = keyOf(m);
+      if (!km || km === k) continue;
+      const ws = e.weeks.filter((w) => w.kgs && w.kgs[m]);
+      if (!ws.length) continue;
+      let gm = map.get(km);
+      if (!gm) map.set(km, (gm = { key: km, name: m, items: [] }));
+      ws.forEach((w) => gm.items.push({ c, d, e, w, mv: m }));
+    }
   })));
+  for (const g of map.values()) g.items.sort((a, b) => (a.c.order ?? 0) - (b.c.order ?? 0));
   index = map;
   return map;
 }
@@ -381,7 +411,8 @@ function render() {
 
 function rxChips(w) {
   if (!w) return "";
-  const p = [["Sets", w.sets], ["Reps", w.reps], ["Rest", w.rest]].filter(([, v]) => v);
+  const side = /^\s*(\d+)\s*[\/-]\s*\1\s*$/.test(w.reps || "") ? " each side" : "";
+  const p = [["Sets", w.sets], ["Reps", (w.reps || "") + side], ["Rest", w.rest]].filter(([, v]) => v);
   return `<div class="rx">${p.map(([k, v]) => `<b><em>${k}</em>${esc(v)}</b>`).join("")}</div>`;
 }
 
@@ -467,7 +498,7 @@ function renderCycle(c) {
 function groupStats(g) {
   const pts = { kg: [], reps: [], secs: [] };
   for (const it of g.items) {
-    const v = { kg: kgOf(it.w), reps: repsOf(it.w), secs: secsOf(it.w) };
+    const v = { kg: kgOf(it.w, it.mv), reps: it.mv ? null : repsOf(it.w), secs: it.mv ? null : secsOf(it.w) };
     for (const m of ["kg", "reps", "secs"]) if (v[m] != null) pts[m].push({ v: v[m], it });
   }
   return pts;
@@ -494,12 +525,24 @@ function progList() {
     return `<button type="button" class="item" data-act="prog" data-key="${esc(g.key)}"><span class="grow"><b>${nameLines(g.name).map(esc).join(" · ")}</b><small class="muted">${cyc} cycle${cyc > 1 ? "s" : ""}${tags ? " · " + tags : ""}</small></span><span class="chev">›</span></button>`;
   }).join("") || '<p class="muted" style="padding:8px">No exercises match.</p>';
 }
+// How a set was performed, from the prescription: 1" iso, eccentric, ... so charts compare like with like.
+function variantOf(w) {
+  const t = normQuotes([w.reps, w.sets].filter(Boolean).join(" "));
+  const m = t.match(/(\d+)\s*"\s*iso/i);
+  if (m) return `${m[1]}" iso`;
+  if (/eccentric/i.test(t)) return "Eccentric";
+  if (/esplosiv/i.test(t)) return "Explosive";
+  return "Normal";
+}
 const METRICS = { kg: ["Weight", (v) => `${fmtNum(v)} kg`], reps: ["Reps", (v) => `${v} reps`], secs: ["Time", (v) => fmtSecs(v)] };
 function renderExercise(g) {
   const pts = groupStats(g);
   const avail = Object.keys(METRICS).filter((m) => pts[m].length);
   const metric = avail.includes(ui.metric) ? ui.metric : avail[0];
-  const series = metric ? pts[metric] : [];
+  const all = metric ? pts[metric] : [];
+  const variants = [...new Set(all.map((p) => variantOf(p.it.w)))].sort((a, b) => (a === "Normal" ? -1 : b === "Normal" ? 1 : parseInt(a) - parseInt(b) || a.localeCompare(b)));
+  const variant = variants.length > 1 && variants.includes(ui.variant) ? ui.variant : "All";
+  const series = variant === "All" ? all : all.filter((p) => variantOf(p.it.w) === variant);
   const vals = series.map((p) => p.v);
   const hist = g.items.slice().reverse();
   view(`
@@ -508,6 +551,7 @@ function renderExercise(g) {
     <div class="nm" style="font-weight:650;font-size:17px">${nameHtml(g.name)}</div>
     ${videoChips(g.name)}
     ${avail.length ? `<div class="seg">${avail.map((m) => `<button type="button" data-act="metric" data-m="${m}" aria-pressed="${m === metric}">${METRICS[m][0]}</button>`).join("")}</div>
+    ${variants.length > 1 ? `<div class="seg">${["All", ...variants].map((v) => `<button type="button" data-act="variant" data-v="${esc(v)}" aria-pressed="${v === variant}">${esc(v)}</button>`).join("")}</div>` : ""}
     <div class="stats"><div><small class="muted">Latest</small><b>${METRICS[metric][1](vals.at(-1))}</b></div><div><small class="muted">Best</small><b>${METRICS[metric][1](Math.max(...vals))}</b></div><div><small class="muted">Entries</small><b>${vals.length}</b></div></div>
     <div class="chart" id="chart"></div>` : `<p class="muted">No weights, reps or times found in your notes for this exercise yet.</p>`}
   </section>
@@ -546,7 +590,7 @@ function drawChart(el, series, fmt, axisFmt = fmtNum) {
     const p = series[i];
     hair.setAttribute("x1", X(i)); hair.setAttribute("x2", X(i)); hair.setAttribute("visibility", "visible");
     hdot.setAttribute("cx", X(i)); hdot.setAttribute("cy", Y(p.v)); hdot.setAttribute("visibility", "visible");
-    tip.innerHTML = `<b>${esc(fmt(p.v))}</b><br>${esc(p.it.c.label)} · Day ${esc(p.it.d.id)} · wk ${esc(p.it.w.w)}<br><span style="opacity:.8">${esc(logText(p.it.w).slice(0, 120))}</span>`;
+    tip.innerHTML = `<b>${esc(fmt(p.v))}</b><br>${esc(p.it.c.label)} · Day ${esc(p.it.d.id)} · wk ${esc(p.it.w.w)}<br>${esc([p.it.w.sets, p.it.w.reps].filter(Boolean).join(" × "))}<br><span style="opacity:.8">${esc(logText(p.it.w).slice(0, 120))}</span>`;
     tip.hidden = false;
     tip.style.left = Math.min(Math.max(X(i), 110), W - 110) + "px";
     tip.style.top = Math.max(0, Y(p.v) - tip.offsetHeight - 14) + "px";
@@ -642,7 +686,7 @@ function openLog(cid, di, ei, k) {
     ${rxChips(w)}${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
     ${e.desc ? `<p class="pre muted" style="font-size:14px">${nl(e.desc)}</p>` : ""}
     ${lt ? `<p style="font-size:14px"><b>Last time</b> <span class="muted">(${esc(lt.label)})</span><br>${esc(logText(lt.w))}</p>` : ""}
-    <div class="row"><label class="f grow"><span>Weight (kg)</span><input id="fKg" inputmode="decimal" value="${esc(w.kg || "")}" placeholder="${esc(lt && kgOf(lt.w) != null ? fmtNum(kgOf(lt.w)) : "")}"></label>
+    <div class="row" style="flex-wrap:wrap">${weightFields(e, w, lt, "data-fkg")}
     <label class="f grow"><span>Reps / time done</span><input id="fRes" value="${esc(w.res || "")}" placeholder="12,10,9 or 45s"></label></div>
     <label class="f"><span>Notes</span><textarea id="fLog">${esc(w.log || "")}</textarea></label>
     <label class="f"><span>Question / feedback for trainer</span><textarea id="fQ" style="min-height:52px">${esc(w.q || "")}</textarea></label>
@@ -652,7 +696,7 @@ function openLog(cid, di, ei, k) {
 function saveLog(cid, di, ei, k) {
   const r = getW(cid, di, ei, k); if (!r) return;
   const w = r.w;
-  w.kg = $("#fKg").value.trim(); w.res = $("#fRes").value.trim(); w.log = $("#fLog").value.trim(); w.q = $("#fQ").value.trim();
+  $("#panel").querySelectorAll("[data-fkg]").forEach((inp) => setWeight(w, inp)); w.res = $("#fRes").value.trim(); w.log = $("#fLog").value.trim(); w.q = $("#fQ").value.trim();
   w.done = $("#fDone").checked; w.at = Date.now();
   save(); closeSheet(); render();
 }
@@ -707,7 +751,7 @@ function renderWo() {
       <button class="btn big" style="margin-top:4px" data-act="setdone" data-ei="${ei}">✓ ${target ? `Set ${Math.min(doneSets + 1, target)} done` : "Set done"} ${parseTime(w.rest) ? "· start rest" : ""}</button>
       <section class="card timer" style="margin-top:12px" id="timerBox"></section>
       <section class="card" style="margin-top:12px">
-        <div class="row"><label class="f grow"><span>Weight (kg)</span><input data-wf="kg" inputmode="decimal" value="${esc(w.kg || "")}" placeholder="${esc(lt && kgOf(lt.w) != null ? fmtNum(kgOf(lt.w)) : "")}"></label>
+        <div class="row" style="flex-wrap:wrap">${weightFields(e, w, lt, "data-wf")}
         <label class="f grow"><span>Reps / time done</span><input data-wf="res" value="${esc(w.res || "")}" placeholder="12,10,9 or 45s"></label></div>
         <label class="f"><span>Notes</span><textarea data-wf="log" placeholder="How did it feel?">${esc(w.log || "")}</textarea></label>
         <label class="f"><span>Question / feedback for trainer</span><textarea data-wf="q" style="min-height:52px">${esc(w.q || "")}</textarea></label>
@@ -725,7 +769,8 @@ function renderWo() {
   renderTimer();
   $("#wo").querySelectorAll("[data-wf]").forEach((inp) => inp.addEventListener("input", () => {
     const { e } = list[s - 1]; const w = e.weeks[wo.k];
-    w[inp.dataset.wf] = inp.value.trim(); w.done = true; w.at = Date.now();
+    if (inp.dataset.wf === "kg") setWeight(w, inp); else w[inp.dataset.wf] = inp.value.trim();
+    w.done = true; w.at = Date.now();
     save(false);
   }));
 }
@@ -1110,9 +1155,10 @@ document.addEventListener("click", (ev) => {
     }
     case "import": $("#fImport").click(); break;
     case "import-save": importSave(); break;
-    case "prog": ui.prog = D.key; ui.metric = null; saveUI(); render(); window.scrollTo(0, 0); break;
+    case "prog": ui.prog = D.key; ui.metric = null; ui.variant = "All"; saveUI(); render(); window.scrollTo(0, 0); break;
     case "prog-back": ui.prog = null; saveUI(); render(); break;
     case "metric": ui.metric = D.m; saveUI(); render(); break;
+    case "variant": ui.variant = D.v; saveUI(); render(); break;
     case "pin": {
       const ms = moves(D.name);
       openSheet(`<h3>Pin a video</h3><p class="muted" style="font-size:14px">Open a video, tap Share › Copy link, then paste it here. It will be used for this exercise in every cycle.</p>
