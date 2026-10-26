@@ -224,7 +224,7 @@ label.f textarea{min-height:76px;resize:vertical}
 .stats b{display:block;font-size:20px;font-weight:800}
 .hist{margin-top:8px}
 .tip .tk{color:var(--accent)}
-.hist.one .hc:not(.on),.hist.one .hr:not(.on){display:none}.hist.one .hc{border-top:0}
+.hist.one .hc:not(.on){display:none}.hist.one .hr.on{background:var(--accent-soft)}.hist.one .hc{border-top:0}
 .hc{border-top:1px solid var(--line);padding:10px 0 4px;font-size:14px}
 .hh{margin-bottom:4px}.hh span{color:var(--muted)}.hw{display:block;font-size:12px;color:var(--muted)}
 .hr{display:grid;grid-template-columns:48px 1fr;column-gap:8px;padding:5px 6px;margin:0 -6px;border-radius:8px;transition:background .3s}
@@ -877,7 +877,7 @@ function renderSettings() {
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
       <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with two-move ones in colour: if one is really a single move, tap it (tap again to undo).</li>
     </ol></details>
-    <details><summary><b>Progress</b></summary><p style="font-size:14px">One line per move (combos are split into their moves; Tabata/EMOM blocks are left out). Moves are grouped by body part (Legs, Push, Back, Shoulders, Arms, Core, Full body, Other); tap a group to open it. Moves in your current cycle have a ● and come first. Each line shows the latest value, ▲/▼ against last time, your best and a small trend line. Tap a move for its chart (weight, reps or time; filter by how it was done: normal, iso, eccentric, explosive or in combo) and its history: one card per cycle with the weeks inside (week in green, programme in grey, what you did in bold, notes below). Tap (or slide along) the chart to show just that week in the history below; tap Show all ✕, or the chart away from the line, to see the full history again. Old values come from your notes, so a few may be missing.</p></details>
+    <details><summary><b>Progress</b></summary><p style="font-size:14px">One line per move (combos are split into their moves; Tabata/EMOM blocks are left out). Moves are grouped by body part (Legs, Push, Back, Shoulders, Arms, Core, Full body, Other); tap a group to open it. Moves in your current cycle have a ● and come first. Each line shows the latest value, ▲/▼ against last time, your best and a small trend line. Tap a move for its chart (weight, reps or time; filter by how it was done: normal, iso, eccentric, explosive or in combo) and its history: one card per cycle with the weeks inside (week in green, programme in grey, what you did in bold, notes below). Tap (or slide along) the chart to show just that cycle in the history below, with the week highlighted; tap Show all ✕, or the chart away from the line, to see the full history again. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>Tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send the text by WhatsApp or email.</li>
       <li>Or tap <b>⬇ Excel file of Cycle N</b> on the same screen: one sheet with that cycle, weights, reps, times and notes, one line per set. Your phone then lets you send it.</li>
