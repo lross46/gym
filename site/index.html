@@ -476,10 +476,18 @@ function toEnglish(s) {
 // Split a block like "TABATA / 1) A / 2) B" or "A ss B" into its single exercises.
 function moves(name) {
   const HEADER = /^(tabata|emom|amrap|for time|triset|superset|circuito|propedeutic|\d+\s*round|nel\s*<|\d+\s*[-\/–]\s*\d+)/i;
+  // Lines that only describe how to do the line above ("2 manubri", "passo stretto", "simultaneo") belong to it.
+  const CONT = /^(con\b|passo stretto|\d\s*manubri[o]?\b|simultaneo|\d\s*gamba\b|b-stance)/i;
   const out = [];
+  let sep = true, alt = false;
   for (let l of nameLines(name)) {
     l = l.replace(/^pre-?affaticante:?\s*/i, "").replace(/,?\s*poi:?\s*$/i, "").replace(/^[-–\/•]\s*/, "").replace(/^\d+\s*[).]\s*/, "").trim();
-    if (!l || /:$/.test(l) || /^\(/.test(l) || /^x\s*\d/i.test(l) || HEADER.test(l)) continue;
+    if (/^oppure$/i.test(l) && out.length) { alt = true; continue; }
+    if (/^aumenta progressivamente/i.test(l)) continue;
+    const q0 = l.replace(/\*+/g, "").trim();
+    if (out.length && (alt || (!sep && CONT.test(q0)))) { out[out.length - 1] += (alt ? " oppure " : " ") + q0; alt = false; continue; }
+    sep = !l || /^(ss|e|&)$/i.test(l);
+    if (!l || /:$/.test(l) || /^\(/.test(l) || /^x\s*\d/i.test(l) || HEADER.test(l)) { sep = true; continue; }
     for (const p of l.split(/\s+(?:ss|\+)\s+|\s*\+\s*$|^\s*\+\s*/i)) {
       const q = p.replace(/^ss\s+/i, "").replace(/^\d+\s*x\s*/i, "").replace(/\s+x\s*\d+\s*$/i, "").replace(/\*+/g, "").trim();
       if (q && q.length > 2 && !/^\(/.test(q) && !out.includes(q)) out.push(q);
@@ -776,6 +784,7 @@ function renderSettings() {
       <li>In the app, go to <b>Programme</b> › <b>Import programme</b> and select all three files together.</li>
       <li>Check the name (e.g. Cycle 52) and tap <b>Add cycle</b>. It becomes the current cycle.</li>
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
+      <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. If one still looks split, tell Claude.</li>
     </ol></details>
     <details><summary><b>Progress</b></summary><p style="font-size:14px">Search an exercise to see charts of weight, reps or time across all cycles; filter by variant (e.g. iso). Tap the chart to see each point. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
