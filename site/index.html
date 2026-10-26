@@ -187,6 +187,7 @@ label.f textarea{min-height:76px;resize:vertical}
 .wl.shut h3{font-size:15px}
 .wl.fin{opacity:.55}
 .wl h3{font-size:17px}
+.wl .pos{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-text);margin-bottom:4px}
 .wl h3 .then{color:var(--accent-text)}
 .sr{display:grid;grid-template-columns:24px 1fr 50px 42px;align-items:center;gap:8px;height:48px;border-radius:12px;padding:0 4px 0 8px;margin-top:4px}
 .sr.hd{height:auto;margin-top:12px;font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--muted)}
@@ -720,7 +721,7 @@ function renderSettings() {
     </ul></details>
     <details><summary><b>Workout</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>Tap <b>Start workout</b>. The header shows cycle, day and week. Warm-up is at the top, stretching at the bottom.</li>
-      <li>One exercise is open at a time. Tap <b>Next exercise →</b> (or ‹ to go back), or tap any exercise to jump to it.</li>
+      <li>One exercise is open at a time; each says where you are (e.g. "Exercise 2 of 5"). Tap <b>Next exercise →</b> (or ‹ to go back), or tap any exercise to jump to it.</li>
       <li>Each set has a row: type <b>kg</b> and <b>reps</b>, then tap ✓. That ticks the set and starts the rest timer.</li>
       <li>An empty kg box shows a suggestion in grey (your previous set, or last time). Tapping ✓ keeps it.</li>
       <li>Combined exercises (pre-fatigue, supersets) have two kg boxes: <b>Ex 1</b> and <b>Ex 2</b>, matching the numbers in the title. Leave 0 or empty for bodyweight.</li>
@@ -901,7 +902,7 @@ function renderWo() {
   const { c, d, list } = woExercises();
   const head = `<div class="head"><button class="ib" data-act="wo-close" aria-label="Close workout">✕</button><b>${esc(c.label)} · Day ${esc(d.id)} · Week ${esc(weekLabel(c, wo.k))}</b><span style="width:44px"></span></div>`;
   const body = (d.warmup ? `<details class="wl"><summary><b>Warm-up</b></summary><p class="pre" style="margin-top:8px">${nl(d.warmup)}</p></details>` : "")
-    + list.map(({ e, ei }, i) => woCard(c, e, ei, i)).join("")
+    + list.map(({ e, ei }, i) => woCard(c, e, ei, i, list.length)).join("")
     + `<details class="wl"><summary><b>Stretching</b></summary><p class="pre" style="margin-top:8px">${nl(d.cooldown || "Stretch the muscles you worked.")}</p></details>`
     + '<div style="height:150px"></div>';
   const lastEx = wo.step >= list.length;
@@ -926,7 +927,8 @@ function setKgPh(w, lt, j, m) {
   const lk = lt ? kgList(lt.w, m).filter(Boolean) : [];
   return (lt && kgList(lt.w, m)[j]) || lk[lk.length - 1] || "";
 }
-function woCard(c, e, ei, i) {
+function woCard(c, e, ei, i, total) {
+  const pos = `<div class="pos">Exercise ${i + 1} of ${total}</div>`;
   const w = e.weeks[wo.k], lt = lastTime(c, e, wo.k);
   const n = setCount(e, w), dn = setsDone(ei, w, e);
   const listy = !w.res || /^[\d\s,]+$/.test(w.res);
@@ -936,7 +938,7 @@ function woCard(c, e, ei, i) {
   const { hdr, ms } = exParts(e);
   const cols = kgCols(e, w, lt);
   const cur = i === wo.step - 1, num = cols.length > 1 ? (j) => `${j + 1}. ` : () => "", mvs = moves(e.name);
-  const title = `<h3>${hdr ? `<span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>` : ""}${ms.map((m, j) => (j ? `<span class="then"> → ${esc(num(j) + m)}</span>` : esc(num(j) + m))).join("")}</h3>`;
+  const title = pos + `<h3>${hdr ? `<span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>` : ""}${ms.map((m, j) => (j ? `<span class="then"> → ${esc(num(j) + m)}</span>` : esc(num(j) + m))).join("")}</h3>`;
   // Only the exercise in progress is open; the others show a one-line summary and open on tap.
   if (!cur) return `<section class="wl shut${logged(w) ? " fin" : ""}" id="wl${ei}" data-act="wo-go" data-i="${i + 1}">${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${logged(w) ? "✓ " + esc(logText(w).slice(0, 90) || "done") : esc(rxText(w))}</div></section>`;
@@ -951,7 +953,7 @@ function woCard(c, e, ei, i) {
       <input data-wf="rep" data-ei="${ei}" data-i="${j}" inputmode="numeric" value="${esc(reps[j] || "")}" placeholder="${esc(bk.target(j))}" aria-label="Reps round ${j + 1}">
       <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Round ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("");
     return `<section class="wl cur" id="wl${ei}">
-    <h3><span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>${bk.mvs.map((m, j) => `${j + 1}. ${esc(m)}`).join("<br>")}</h3>
+    ${pos}<h3><span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>${bk.mvs.map((m, j) => `${j + 1}. ${esc(m)}`).join("<br>")}</h3>
     <div class="pren">${esc(bk.plan)}${bk.kind !== "time" ? ". The timer above Finish runs the rounds." : ""}</div>
     ${e.desc ? `<div class="muted" style="font-size:13px;margin-top:6px">${nl(e.desc)}</div>` : ""}
     ${skip.length < bk.mvs.length ? weightBoxes(e, w, lt, ei, skip) : ""}
