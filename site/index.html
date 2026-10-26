@@ -477,8 +477,9 @@ const rxChips = (w) => `<div class="chips">${rxParts(w).map((t) => `<span class=
 const HDR_RE = /^(tabata|emom|amrap|for time|triset|superset|circuito|\d+\s*'?\s*amrap|\d+\s*round)/i;
 function exParts(e) {
   const l = nameLines(e.name);
-  const hdr = l[0] && HDR_RE.test(l[0]) ? l[0].replace(/:$/, "") : /pre-?affaticante/i.test(e.name) ? "Preaffaticante" : "";
+  const hdr = l[0] && HDR_RE.test(l[0]) ? l[0].replace(/:$/, "") : "";
   const ms = moves(e.name);
+  if (ms.length > 1 && /pre-?affaticante/i.test(e.name)) ms[0] += " (preaffaticante)";
   return { hdr, ms: ms.length ? ms : l };
 }
 const titleHtml = (e) => { const { hdr } = exParts(e); return (hdr ? `<span class="tag">${esc(hdr)}</span>` : "") + exParts(e).ms.map((m, i) => `<span class="${i ? "then" : ""}">${i ? "→ " : ""}${esc(m)}</span>`).join(""); };
