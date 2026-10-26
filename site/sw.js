@@ -1,5 +1,5 @@
 // Network first, falling back to the last cached copy so the app opens offline.
-const CACHE = "gymlog-v17";
+const CACHE = "gymlog-v18";
 const SHELL = ["./", "index.html", "import.js", "manifest.webmanifest", "vendor/xlsx.mini.min.js", "icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
