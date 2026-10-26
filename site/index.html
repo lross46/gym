@@ -553,13 +553,13 @@ function renderTrain() {
     <button class="btn big" data-act="start">${PLAY} ${done ? "Open workout" : nDone ? "Continue" : "Start workout"}</button>
   </section>
   <div class="lab">Exercises · tap one to start there</div>
+  ${day.warmup ? `<details class="card"><summary>Warm-up</summary><p class="pre">${nl(day.warmup)}</p></details>` : ""}
   ${exs.map(({ e, ei }, i) => {
     const w = e.weeks[k], on = logged(w);
     return `<button type="button" class="exl${on ? " on" : ""}" data-act="start-at" data-i="${i + 1}">
       <span class="n">${on ? "✓" : i + 1}</span>
       <span class="grow"><div class="t">${esc(shortName(e))}</div><div class="s">${esc(rxText(w))}</div>${logText(w) ? `<div class="mylog">${esc(logText(w))}</div>` : ""}</span><span class="chev">›</span></button>`;
   }).join("") || `<div class="card empty"><p>No exercises for this week.</p></div>`}
-  ${day.warmup ? `<details class="card"><summary>Warm-up</summary><p class="pre">${nl(day.warmup)}</p></details>` : ""}
   ${day.cooldown ? `<details class="card"><summary>Stretching</summary><p class="pre">${nl(day.cooldown)}</p></details>` : ""}
   <button class="btn ghost" style="width:100%;margin:4px 0 16px" data-act="share" data-id="${esc(c.id)}" data-k="${k}">Share with trainer</button>
   ${nDone ? `<button class="btn danger" style="width:100%;margin:0 0 16px" data-act="reset-day" data-id="${esc(c.id)}" data-di="${di}" data-k="${k}">↺ Reset Day ${esc(day.id)} · Week ${esc(weekLabel(c, k))}</button>` : ""}`);
