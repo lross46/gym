@@ -187,6 +187,9 @@ label.f textarea{min-height:76px;resize:vertical}
 .wl.shut h3{font-size:15px}
 .wl.fin{opacity:.55}
 .wl h3{font-size:17px}
+.wn{margin-top:10px}
+.wn summary{color:var(--accent-text);font-weight:750;cursor:pointer}
+.wn textarea{width:100%;min-height:70px;margin-top:8px;border:0;border-radius:12px;background:var(--soft);padding:10px;font:inherit;resize:vertical}
 .wl .pos{font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-text);margin-bottom:4px}
 .wl h3 .then{color:var(--accent-text)}
 .sr{display:grid;grid-template-columns:24px 1fr 50px 42px;align-items:center;gap:8px;height:48px;border-radius:12px;padding:0 4px 0 8px;margin-top:4px}
@@ -360,11 +363,13 @@ function secsOf(w) {
 }
 const fmtSecs = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`);
 const fmtNum = (v) => (Math.round(v * 10) / 10).toString();
-function logText(w) {
+function logText(w) { return [...logParts(w), w.log || ""].filter(Boolean).join(" · "); }
+// Weight and reps/time of a log, without the note.
+function logParts(w) {
   const kgs = hasKgs(w) ? Object.entries(w.kgs).filter(([, v]) => v && /[1-9]/.test(v)).map(([m, v]) => `${m} ${v} kg`).join(", ") : "";
   // Skip values the note already says ("25 kg ⏎ OK"), so tidied entries don't read "25 kg · 25 kg".
   const inLog = (v, unit) => v && new RegExp(`(^|[^\\d.,])${String(v).trim().replace(/[*+?^${}()|[\]\\]/g, "\\$&").replace(/[.,]/g, "[.,]")}${unit}`, "i").test(w.log || "");
-  return [kgs || (w.kg && !inLog(w.kg, "\\s*k") ? `${w.kg} kg` : ""), w.res && !inLog(w.res, "") ? w.res : "", w.log || ""].filter(Boolean).join(" · ");
+  return [kgs || (w.kg && !inLog(w.kg, "\\s*k") ? `${w.kg} kg` : ""), w.res && !inLog(w.res, "") ? w.res : ""];
 }
 // One weight box per move when an exercise combines several (e.g. "Squat ss Hollow rock").
 function weightFields(e, w, lt, attr) {
@@ -727,7 +732,7 @@ function renderSettings() {
       <li>Combined exercises (pre-fatigue, supersets) have two kg boxes: <b>Ex 1</b> and <b>Ex 2</b>, matching the numbers in the title. Leave 0 or empty for bodyweight.</li>
       <li>Tabata and EMOM show one row per round with that round's move (6' of 20" on / 10" off = 12 rounds). "For time" blocks just ask for your time.</li>
       <li><b>LAST</b> shows what you did last time on the same variant (1" iso with 1" iso).</li>
-      <li><b>✎ Notes</b> opens notes and the "Question for trainer" box.</li>
+      <li><b>✎ Notes</b> opens a free box for notes on that exercise this week. In the Excel export they go under the kg and reps. (The "Question for trainer" box is on Today: tap the exercise.)</li>
       <li><b>Finish workout</b> marks every exercise of the day as done. To leave without that, tap ✕ (what you typed is kept).</li>
     </ol></details>
     <details><summary><b>Timers</b></summary><ul style="font-size:14px;padding-left:20px">
@@ -750,7 +755,7 @@ function renderSettings() {
     </ol></details>
     <details><summary><b>Progress</b></summary><p style="font-size:14px">Search an exercise to see charts of weight, reps or time across all cycles; filter by variant (e.g. iso). Tap the chart to see each point. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
-      <li>Write questions in the "Question for trainer" box of any exercise (✎ Notes).</li>
+      <li>Write questions in the "Question for trainer" box of any exercise (on Today, tap the exercise).</li>
       <li>Tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send the text by WhatsApp or email.</li>
       <li>Or tap <b>⬇ Excel file of Cycle N</b> on the same screen: one sheet with that cycle, weights, reps, times and notes, one line per set. Your phone then lets you send it.</li>
     </ol></details>
@@ -927,6 +932,8 @@ function setKgPh(w, lt, j, m) {
   const lk = lt ? kgList(lt.w, m).filter(Boolean) : [];
   return (lt && kgList(lt.w, m)[j]) || lk[lk.length - 1] || "";
 }
+// Plain notes for this week; kg and reps are typed in the set rows.
+const notesBox = (ei, w) => `<details class="wn"${w.log ? " open" : ""}><summary>✎ Notes${w.log ? " ✓" : ""}</summary><textarea data-wf="log" data-ei="${ei}" placeholder="How did it feel?">${esc(w.log || "")}</textarea></details>`;
 function woCard(c, e, ei, i, total) {
   const pos = `<div class="pos">Exercise ${i + 1} of ${total}</div>`;
   const w = e.weeks[wo.k], lt = lastTime(c, e, wo.k);
@@ -958,7 +965,7 @@ function woCard(c, e, ei, i, total) {
     ${e.desc ? `<div class="muted" style="font-size:13px;margin-top:6px">${nl(e.desc)}</div>` : ""}
     ${skip.length < bk.mvs.length ? weightBoxes(e, w, lt, ei, skip) : ""}
     ${rows}
-    <button type="button" class="link" data-act="log" data-cid="${esc(c.id)}" data-di="${wo.di}" data-ei="${ei}" data-k="${wo.k}">✎ Notes${w.log || w.q ? " ✓" : ""}</button>
+    ${notesBox(ei, w)}
   </section>`;
   }
   return `<section class="wl cur" id="wl${ei}">
@@ -972,7 +979,7 @@ function woCard(c, e, ei, i, total) {
       ${listy ? `<input data-wf="rep" data-ei="${ei}" data-i="${j}" inputmode="numeric" value="${esc(reps[j] || "")}" placeholder="${esc(ph)}" aria-label="Reps set ${j + 1}">` : ""}
       <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Set ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("")}
     ${listy ? "" : `<p class="muted" style="font-size:13px">Done: ${esc(w.res)}</p>`}
-    <button type="button" class="link" data-act="log" data-cid="${esc(c.id)}" data-di="${wo.di}" data-ei="${ei}" data-k="${wo.k}">✎ Notes${w.log || w.q ? " ✓" : ""}</button>
+    ${notesBox(ei, w)}
   </section>`;
 }
 $("#wo").addEventListener("input", (ev) => {
@@ -1244,7 +1251,7 @@ async function exportExcel(only) {
       r = row(); c.days.forEach((d, i) => (r[i * W] = `GIORNO "${d.id}"`)); aoa.push(r);
       r = row(); c.days.forEach((d, i) => (r[i * W] = "Riscaldamento:\n" + (d.warmup || ""))); aoa.push(r);
       r = row(); c.days.forEach((d, i) => ["ESERCIZIO", "SETTIMANA DI ALLENAMENTO", "SERIE", "RIPETIZIONI", "REC TRA LE SERIE", "NOTE"].forEach((h, k) => (r[i * W + k] = h))); aoa.push(r);
-      const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, [setLines(w, e) || logText(w), setLines(w, e) && w.log, w.q ? "Q: " + w.q : ""].filter(Boolean).join("\n")])));
+      const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, [setLines(w, e) || logParts(w).filter(Boolean).join(" · "), w.log, w.q ? "Q: " + w.q : ""].filter(Boolean).join("\n")])));
       const n = Math.max(0, ...cols.map((l) => l.length));
       for (let i = 0; i < n; i++) { r = row(); cols.forEach((l, di) => l[i] && l[i].forEach((v, k) => (r[di * W + k] = v))); aoa.push(r); }
       r = row(); c.days.forEach((d, i) => (r[i * W] = d.cooldown || "")); aoa.push(r);
