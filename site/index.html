@@ -224,11 +224,11 @@ label.f textarea{min-height:76px;resize:vertical}
 .stats b{display:block;font-size:20px;font-weight:800}
 .hist{margin-top:8px}
 .tip .tk{color:var(--accent)}
-.tochart{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:20;border:0;border-radius:999px;padding:10px 16px;font-weight:650;background:var(--ink);color:var(--surface);box-shadow:var(--shadow)}.tochart[hidden]{display:none}
+.hist.one .hc:not(.on),.hist.one .hr:not(.on){display:none}.hist.one .hc{border-top:0}
 .hc{border-top:1px solid var(--line);padding:10px 0 4px;font-size:14px}
 .hh{margin-bottom:4px}.hh span{color:var(--muted)}.hw{display:block;font-size:12px;color:var(--muted)}
 .hr{display:grid;grid-template-columns:48px 1fr;column-gap:8px;padding:5px 6px;margin:0 -6px;border-radius:8px;transition:background .3s}
-.hr.hl{background:var(--accent-soft)}
+
 .hk{font-weight:700;color:var(--accent-text);font-size:13px}
 .hx{color:var(--muted);font-size:13px}
 .hv,.hn{grid-column:2;white-space:pre-line}.hv{font-weight:600}.hn{color:var(--ink)}.hn i{color:var(--muted);font-size:12px;margin-right:4px}
@@ -770,7 +770,6 @@ function renderExercise(g) {
   const hist = g.items.filter((it) => logText(it.w) || fullLog(it.w, it.e)).reverse();
   view(`
   <button class="link" data-act="prog-back">‹ All exercises</button>
-  <button type="button" class="tochart" id="toChart" data-act="to-chart" hidden>↑ Back to chart</button>
   <section class="card">
     <div class="nm" style="font-weight:650;font-size:17px">${nameHtml(g.name)}</div>
     ${avail.length ? `<div class="seg">${avail.map((m) => `<button type="button" data-act="metric" data-m="${m}" aria-pressed="${m === metric}">${METRICS[m][0]}</button>`).join("")}</div>
@@ -778,20 +777,15 @@ function renderExercise(g) {
     <div class="stats"><div><small class="muted">Latest</small><b>${METRICS[metric][1](vals.at(-1))}</b></div><div><small class="muted">Best</small><b>${METRICS[metric][1](Math.max(...vals))}</b></div><div><small class="muted">Entries</small><b>${vals.length}</b></div></div>
     <div class="chart" id="chart"></div>` : `<p class="muted">No weights, reps or times found in your notes for this exercise yet.</p>`}
   </section>
-  <section class="card"><h3>History</h3><div class="hist">${histGroups(hist).map((h) => `<div class="hc"><div class="hh"><b>${esc(cName(h.c))}</b> <span>· Day ${esc(h.d.id)}</span>${h.with ? `<span class="hw">with ${esc(h.with)}</span>` : ""}</div>${h.items.map((it) => `<div class="hr" data-hi="${g.items.indexOf(it)}"><span class="hk">Wk ${esc(it.w.w)}</span><span class="hx">${esc([it.w.sets, it.w.reps].filter(Boolean).join(" × "))}</span>${noteHtml(it)}</div>`).join("")}</div>`).join("")}</div></section>`);
-  let tapX = null;
+  <section class="card"><h3 class="row" style="justify-content:space-between">History <button type="button" class="link" id="histAll" data-act="hist-all" hidden>Show all ✕</button></h3><div class="hist">${histGroups(hist).map((h) => `<div class="hc"><div class="hh"><b>${esc(cName(h.c))}</b> <span>· Day ${esc(h.d.id)}</span>${h.with ? `<span class="hw">with ${esc(h.with)}</span>` : ""}</div>${h.items.map((it) => `<div class="hr" data-hi="${g.items.indexOf(it)}"><span class="hk">Wk ${esc(it.w.w)}</span><span class="hx">${esc([it.w.sets, it.w.reps].filter(Boolean).join(" × "))}</span>${noteHtml(it)}</div>`).join("")}</div>`).join("")}</div></section>`);
   const pick = (it) => {
-    document.querySelectorAll(".hr.hl").forEach((x) => x.classList.remove("hl"));
-    pick.row = it && document.querySelector(`.hr[data-hi="${g.items.indexOf(it)}"]`);
-    if (pick.row) pick.row.classList.add("hl");
-    else $("#toChart").hidden = true;
+    const hist = $(".hist"), row = it && document.querySelector(`.hr[data-hi="${g.items.indexOf(it)}"]`);
+    document.querySelectorAll(".hr.on, .hc.on").forEach((x) => x.classList.remove("on"));
+    hist.classList.toggle("one", !!row);
+    $("#histAll").hidden = !row;
+    if (row) { row.classList.add("on"); row.closest(".hc").classList.add("on"); }
   };
-  if (series.length) {
-    drawChart($("#chart"), series, METRICS[metric][1], metric === "secs" ? (v) => fmtClock(v) : fmtNum, pick);
-    const svg = $("#chart svg");
-    svg.addEventListener("pointerdown", (e) => { tapX = e.clientX; });
-    svg.addEventListener("pointerup", (e) => { if (tapX != null && Math.abs(e.clientX - tapX) < 8 && pick.row) { pick.row.scrollIntoView({ behavior: "smooth", block: "center" }); $("#toChart").hidden = false; } tapX = null; });
-  }
+  if (series.length) drawChart($("#chart"), series, METRICS[metric][1], metric === "secs" ? (v) => fmtClock(v) : fmtNum, pick);
 }
 function niceTicks(min, max, n = 4) {
   if (min === max) { min = min - 1; max = max + 1; }
@@ -830,13 +824,15 @@ function drawChart(el, series, fmt, axisFmt = fmtNum, onPick = null) {
     hdot.setAttribute("cx", X(i)); hdot.setAttribute("cy", Y(p.v)); hdot.setAttribute("visibility", "visible");
     tip.innerHTML = `<b>${esc(fmt(p.v))}</b><br>${esc(cName(p.it.c))} · Day ${esc(p.it.d.id)} · <b class="tk">Wk ${esc(p.it.w.w)}</b><br><span style="opacity:.7">${esc([p.it.w.sets, p.it.w.reps].filter(Boolean).join(" × "))}</span>`;
     if (onPick) onPick(p.it);
+    if (onPick) return; // the history below shows the picked week instead of a tooltip
     tip.hidden = false;
     tip.style.left = Math.min(Math.max(X(i), 110), W - 110) + "px";
     tip.style.top = Math.max(0, Y(p.v) - tip.offsetHeight - 14) + "px";
   };
-  svg.addEventListener("pointermove", (e) => show(e.clientX));
+  svg.addEventListener("pointermove", (e) => { if (onPick && e.pointerType === "mouse" && !e.buttons) return; show(e.clientX); });
   svg.addEventListener("pointerdown", (e) => show(e.clientX, e.clientY));
-  svg.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hide(); });
+  svg.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && !onPick) hide(); });
+  svg.addEventListener("clearpick", () => { hide(); if (onPick) onPick(null); });
 }
 
 /* ---------- settings ---------- */
@@ -881,7 +877,7 @@ function renderSettings() {
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
       <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with two-move ones in colour: if one is really a single move, tap it (tap again to undo).</li>
     </ol></details>
-    <details><summary><b>Progress</b></summary><p style="font-size:14px">One line per move (combos are split into their moves; Tabata/EMOM blocks are left out). Moves are grouped by body part (Legs, Push, Back, Shoulders, Arms, Core, Full body, Other); tap a group to open it. Moves in your current cycle have a ● and come first. Each line shows the latest value, ▲/▼ against last time, your best and a small trend line. Tap a move for its chart (weight, reps or time; filter by how it was done: normal, iso, eccentric, explosive or in combo) and its history: one card per cycle with the weeks inside (week in green, programme in grey, what you did in bold, notes below). Tap a point on the chart to jump to and highlight that week in the history; tap ↑ Back to chart to return, or tap the chart away from the line to clear it. Old values come from your notes, so a few may be missing.</p></details>
+    <details><summary><b>Progress</b></summary><p style="font-size:14px">One line per move (combos are split into their moves; Tabata/EMOM blocks are left out). Moves are grouped by body part (Legs, Push, Back, Shoulders, Arms, Core, Full body, Other); tap a group to open it. Moves in your current cycle have a ● and come first. Each line shows the latest value, ▲/▼ against last time, your best and a small trend line. Tap a move for its chart (weight, reps or time; filter by how it was done: normal, iso, eccentric, explosive or in combo) and its history: one card per cycle with the weeks inside (week in green, programme in grey, what you did in bold, notes below). Tap (or slide along) the chart to show just that week in the history below; tap Show all ✕, or the chart away from the line, to see the full history again. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>Tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send the text by WhatsApp or email.</li>
       <li>Or tap <b>⬇ Excel file of Cycle N</b> on the same screen: one sheet with that cycle, weights, reps, times and notes, one line per set. Your phone then lets you send it.</li>
@@ -1587,7 +1583,7 @@ document.addEventListener("click", (ev) => {
     case "one": { const e = pending && pending.days[+el.dataset.d].exercises[+el.dataset.e]; if (e) { e.one = !e.one; oneVer++; showImport(); } break; }
     case "prog": ui.prog = D.key; ui.metric = null; ui.variant = "All"; saveUI(); render(); window.scrollTo(0, 0); break;
     case "prog-back": ui.prog = null; saveUI(); render(); break;
-    case "to-chart": el.hidden = true; document.querySelectorAll(".hr.hl").forEach((x) => x.classList.remove("hl")); window.scrollTo({ top: 0, behavior: "smooth" }); break;
+    case "hist-all": { const svg = $("#chart svg"); if (svg) svg.dispatchEvent(new Event("clearpick")); break; }
     case "metric": ui.metric = D.m; saveUI(); render(); break;
     case "variant": ui.variant = D.v; saveUI(); render(); break;
     case "savesettings":
