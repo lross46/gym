@@ -483,7 +483,7 @@ function rxParts(w) {
 }
 const rxText = (w) => rxParts(w).join(" · ");
 const rxChips = (w) => `<div class="chips">${rxParts(w).map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>`;
-const HDR_RE = /^(tabata|emom|amrap|for time|triset|superset|circuito|\d+\s*'?\s*amrap|\d+\s*round)/i;
+const HDR_RE = /^(tabata|emom|amrap|for time|triset|superset|circuito|\d+\s*'?\s*amrap|\d+\s*round|\d+\/\d+\s*[–-])/i;
 function exParts(e) {
   const l = nameLines(e.name);
   const hdr = l[0] && HDR_RE.test(l[0]) ? l[0].replace(/:$/, "") : "";
@@ -717,6 +717,7 @@ function renderSettings() {
       <li><b>Today</b> shows this week (green days = trained) and the next session. Tap <b>Change</b> to pick another day or week.</li>
       <li>Tap <b>Start workout</b>: the day is a list (warm-up at the top, stretching at the bottom) with one exercise open at a time. Tap <b>Next exercise</b> to move on, or tap any exercise to jump to it.</li>
       <li>Each set has its own row: type the kg and reps, then tap ✓ to tick it and start the rest timer. An empty kg box suggests the set before (or last time). Combined exercises have a kg box for each: Ex 1 and Ex 2.</li>
+      <li>Tabata and EMOM show one row per round with that round's move (6' of 20" on / 10" off = 12 rounds). "For time" blocks just ask for your time.</li>
       <li>"Last time" compares like with like (1" iso with 1" iso). Reps, notes and questions are under ✎.</li>
       <li>You can also tap any exercise on Today to log it without starting a workout.</li>
     </ol></details>
@@ -835,8 +836,26 @@ function endWorkout() {
   wakeLock = null; wo = null;
   flushSync(); render();
 }
-function setsDone(ei, w) {
-  if (wo.sets[ei] == null) wo.sets[ei] = w.done ? parseSets(w.sets) || 1 : 0;
+// Tabata and EMOM blocks: one row per round, the moves taking turns ("6'" of 20" on / 10" off = 12 rounds).
+function block(e, w) {
+  const nm = e.name + " " + (e.desc || ""), total = parseTime(w.sets);
+  // Numbered lines keep repeats (EMOM "1) One arm thruster / 2) One arm thruster" = one per arm).
+  const numbered = nameLines(e.name).filter((l) => /^\d+\s*\)/.test(l)).map((l) => l.replace(/^\d+\s*\)\s*/, "").replace(/\*+/g, "").trim());
+  const mvs = numbered.length ? numbered : moves(e.name);
+  if (/tabata/i.test(nm)) {
+    const on = parseTime(w.reps) || 20, off = parseTime(w.rest) || 10, rounds = total ? Math.max(1, Math.round(total / (on + off))) : 8;
+    return { kind: "tabata", mvs, rounds, plan: `${rounds} rounds · ${on}s work, ${off}s rest · max reps`, target: () => "" };
+  }
+  if (/emom/i.test(nm)) {
+    const rounds = total ? Math.max(1, Math.round(total / 60)) : 8, reps = String(w.reps || "").split("+").map((x) => x.trim());
+    return { kind: "emom", mvs, rounds, plan: `${rounds} minutes · one move each minute, in order`, target: (r) => (reps[r % reps.length].match(/\d+/) || [""])[0] };
+  }
+  if (exParts(e).hdr) return { kind: "time", mvs, rounds: 1, plan: "Do it as fast as you can, then type your time" };
+  return null;
+}
+const setCount = (e, w) => { const b = block(e, w); return b ? b.rounds : parseSets(w.sets) || 1; };
+function setsDone(ei, w, e) {
+  if (wo.sets[ei] == null) wo.sets[ei] = w.done ? (e ? setCount(e, w) : parseSets(w.sets) || 1) : 0;
   return wo.sets[ei];
 }
 const ltHtml = (lt, style = "") => (lt ? `<p class="muted" style="font-size:13px;margin:10px 2px 0;${style}"><b>Last time</b>${lt.other ? ` (${esc(lt.other.toLowerCase())})` : ""} · ${esc(lt.label)}<br>${esc(logText(lt.w).slice(0, 160))}</p>` : "");
@@ -886,7 +905,7 @@ function setKgPh(w, lt, j, m) {
 }
 function woCard(c, e, ei, i) {
   const w = e.weeks[wo.k], lt = lastTime(c, e, wo.k);
-  const n = parseSets(w.sets) || 1, dn = setsDone(ei, w);
+  const n = setCount(e, w), dn = setsDone(ei, w, e);
   const listy = !w.res || /^[\d\s,]+$/.test(w.res);
   const reps = String(w.res || "").split(",").map((x) => x.trim());
   const lreps = lt && /^[\d\s,]+$/.test(lt.w.res || "") ? lt.w.res.split(",").map((x) => x.trim()) : [];
@@ -899,6 +918,24 @@ function woCard(c, e, ei, i) {
   if (!cur) return `<section class="wl shut${logged(w) ? " fin" : ""}" id="wl${ei}" data-act="wo-go" data-i="${i + 1}">${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${logged(w) ? "✓ " + esc(logText(w).slice(0, 90) || "done") : esc(rxText(w))}</div></section>`;
   const grid = `style="grid-template-columns:24px 1fr ${cols.map(() => "54px").join(" ")} ${listy ? "50px" : ""} 42px"`;
+  const bk = block(e, w);
+  if (bk) {
+    // Kg box only for the loaded moves (e.g. Push press), none for bodyweight ones.
+    const skip = bk.mvs.filter((m) => !LOADED_RE.test(m) && !(w.kgs && w.kgs[m]));
+    const rows = bk.kind === "time"
+      ? `<div class="sr${dn ? " ok" : ""}" style="grid-template-columns:1fr 90px 42px"><span>Your time</span><input data-wf="res" data-ei="${ei}" inputmode="text" value="${esc(w.res || "")}" placeholder="${esc(lt && lt.w.res ? lt.w.res : "mm:ss")}" aria-label="Your time"><button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="0" aria-label="Done">${dn ? "✓" : ""}</button></div>`
+      : `<div class="sr hd" style="grid-template-columns:24px 1fr 50px 42px"><span>RD</span><span>MOVE</span><span>REPS</span><span></span></div>` + Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" style="grid-template-columns:24px 1fr 50px 42px"><b>${j + 1}</b><span style="font-size:14px;line-height:1.2">${esc(bk.mvs[j % bk.mvs.length] || "")}</span>
+      <input data-wf="rep" data-ei="${ei}" data-i="${j}" inputmode="numeric" value="${esc(reps[j] || "")}" placeholder="${esc(bk.target(j))}" aria-label="Reps round ${j + 1}">
+      <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Round ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("");
+    return `<section class="wl cur" id="wl${ei}">
+    <h3><span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>${bk.mvs.map((m, j) => `${j + 1}. ${esc(m)}`).join("<br>")}</h3>
+    <div class="pren">${esc(bk.plan)}${bk.kind !== "time" ? ". The timer above Finish runs the rounds." : ""}</div>
+    ${e.desc ? `<div class="muted" style="font-size:13px;margin-top:6px">${nl(e.desc)}</div>` : ""}
+    ${skip.length < bk.mvs.length ? weightBoxes(e, w, lt, ei, skip) : ""}
+    ${rows}
+    <button type="button" class="link" data-act="log" data-cid="${esc(c.id)}" data-di="${wo.di}" data-ei="${ei}" data-k="${wo.k}">✎ Notes${w.log || w.q ? " ✓" : ""}</button>
+  </section>`;
+  }
   return `<section class="wl cur" id="wl${ei}">
     ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
@@ -1156,16 +1193,18 @@ async function shareOrDownload(blob, name) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
-// For the trainer: one line per set ("Set 2: Floor press 12,5 kg + Push ups · 10 reps") when weights or reps were logged per set.
-function setLines(w) {
-  const kg = Object.entries(w.kgs || {}).filter(([, v]) => /[1-9]/.test(v)).map(([m, v]) => [m, v.split("/")]);
-  if (!kg.length && w.kg) kg.push([null, String(w.kg).split("/")]);
+// For the trainer: one line per set ("Set 2: Floor press 12,5 kg + Push ups bodyweight · 10 reps"); 0 kg or empty = bodyweight.
+function setLines(w, e) {
+  const bk = e && block(e, w);
+  const mv = e && !bk ? moves(e.name) : [];
+  const kg = (mv.length > 1 ? mv : [null]).map((m) => [m, kgList(w, m)]);
   const reps = /^[\d\s,]+$/.test(w.res || "") ? w.res.split(",").map((x) => x.trim()) : [];
-  const n = Math.max(reps.length, ...kg.map(([, a]) => a.length));
+  const n = Math.max(reps.length, ...kg.map(([, a]) => (a.some(Boolean) ? a.length : 0)));
   if (n < 2) return "";
   return Array.from({ length: n }, (_, j) => {
-    const k = kg.filter(([, a]) => a[j]).map(([m, a]) => (m ? `${m} ${a[j]} kg` : `${a[j]} kg`)).join(" + ");
-    return `Set ${j + 1}: ${[k, reps[j] && `${reps[j]} reps`].filter(Boolean).join(" · ") || "–"}`;
+    if (bk && bk.kind !== "time") return `Round ${j + 1}: ${bk.mvs[j % bk.mvs.length]}${reps[j] ? ` · ${reps[j]} reps` : ""}`;
+    const k = kg.map(([m, a]) => { const t = parseFloat(String(a[j] || "").replace(",", ".")) > 0 ? `${a[j]} kg` : "bodyweight"; return m ? `${m} ${t}` : t; }).join(" + ");
+    return `Set ${j + 1}: ${[k, reps[j] && `${reps[j]} reps`].filter(Boolean).join(" · ")}`;
   }).join("\n");
 }
 async function exportExcel(only) {
@@ -1180,7 +1219,7 @@ async function exportExcel(only) {
       r = row(); c.days.forEach((d, i) => (r[i * W] = `GIORNO "${d.id}"`)); aoa.push(r);
       r = row(); c.days.forEach((d, i) => (r[i * W] = "Riscaldamento:\n" + (d.warmup || ""))); aoa.push(r);
       r = row(); c.days.forEach((d, i) => ["ESERCIZIO", "SETTIMANA DI ALLENAMENTO", "SERIE", "RIPETIZIONI", "REC TRA LE SERIE", "NOTE"].forEach((h, k) => (r[i * W + k] = h))); aoa.push(r);
-      const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, [setLines(w) || logText(w), setLines(w) && w.log, w.q ? "Q: " + w.q : ""].filter(Boolean).join("\n")])));
+      const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, [setLines(w, e) || logText(w), setLines(w, e) && w.log, w.q ? "Q: " + w.q : ""].filter(Boolean).join("\n")])));
       const n = Math.max(0, ...cols.map((l) => l.length));
       for (let i = 0; i < n; i++) { r = row(); cols.forEach((l, di) => l[i] && l[i].forEach((v, k) => (r[di * W + k] = v))); aoa.push(r); }
       r = row(); c.days.forEach((d, i) => (r[i * W] = d.cooldown || "")); aoa.push(r);
@@ -1371,13 +1410,13 @@ document.addEventListener("click", (ev) => {
       audioInit();
       const ei = num("ei"), i = num("i");
       const { list } = woExercises(); const item = list.find((x) => x.ei === ei); if (!item) break;
-      const w = item.e.weeks[wo.k], target = parseSets(w.sets) || 1;
-      const before = setsDone(ei, w);
+      const w = item.e.weeks[wo.k], target = setCount(item.e, w), bk = block(item.e, w);
+      const before = setsDone(ei, w, item.e);
       wo.sets[ei] = i < before ? i : i + 1;
       // Ticking a set with an empty weight box keeps the suggested weight.
       if (i >= before) {
         const lt = lastTime(findCycle(wo.cid), item.e, wo.k);
-        for (const m of kgCols(item.e, w, lt)) {
+        for (const m of bk ? [] : kgCols(item.e, w, lt)) {
           const a = kgList(w, m);
           if (a[i]) continue;
           while (a.length <= i) a.push("");
@@ -1387,7 +1426,7 @@ document.addEventListener("click", (ev) => {
       }
       if (wo.sets[ei] > 0) { markDone(w); save(false); }
       wo.step = list.indexOf(item) + 1;
-      const ticked = wo.sets[ei] > before, rest = parseTime(w.rest);
+      const ticked = wo.sets[ei] > before, rest = bk ? null : parseTime(w.rest);
       const y = $("#wo").scrollTop;
       if (ticked && rest) { T.restore = T.mode !== "rest" && wo.sets[ei] < target; T.mode = "rest"; T.secs = rest; timerStop(true); }
       renderWo(); $("#wo").scrollTop = y;
