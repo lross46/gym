@@ -189,7 +189,7 @@ label.f textarea{min-height:76px;resize:vertical}
 .src{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.3}
 .wn{margin-top:8px}
 .item.old,.item.old b,.item.old small{color:var(--muted)}
-.imp{font-size:13px;padding-left:20px;margin:0 0 10px}.imp li{margin:2px 0}.imp li.two{color:var(--accent-text)}
+.imp{font-size:13px;padding-left:20px;margin:0 0 10px}.imp li{margin:2px 0}.imp li.two{color:var(--accent-text)}.imp li[data-act]{cursor:pointer;text-decoration:underline dotted}.imp li.one::after{content:" ✓ one move";color:var(--muted)}
 .item.old{opacity:.7}
 .wn summary{color:var(--accent-text);font-weight:750;cursor:pointer}
 .wn textarea{width:100%;min-height:70px;margin-top:8px;border:0;border-radius:12px;background:var(--soft);padding:10px;font:inherit;resize:vertical}
@@ -475,7 +475,19 @@ function toEnglish(s) {
   return t.replace(/\s+/g, " ").trim();
 }
 // Split a block like "TABATA / 1) A / 2) B" or "A ss B" into its single exercises.
+// Exercises Luca marked "It's one move" (e.one) are never split; cached per data/pending/toggle.
+let oneVer = 0, oneKey = null, oneSet = new Set();
+function isOne(name) {
+  const k = [data, pending, oneVer];
+  if (!oneKey || k.some((x, i) => x !== oneKey[i])) {
+    oneKey = k; oneSet = new Set();
+    for (const c of [...((data && data.cycles) || []), ...(pending ? [pending] : [])]) for (const d of c.days || []) for (const e of d.exercises || []) if (e.one) oneSet.add(e.name);
+  }
+  return oneSet.has(name);
+}
+const oneName = (name) => nameLines(name).filter((l) => !/^(ss|poi:?|e|&)$/i.test(l)).join(" ").replace(/\*+/g, "").replace(/\s+/g, " ").trim();
 function moves(name) {
+  if (isOne(name)) return [oneName(name)];
   const HEADER = /^(tabata|emom|amrap|for time|triset|superset|circuito|propedeutic|\d+\s*round|nel\s*<|\d+\s*[-\/–]\s*\d+)/i;
   // Lines that only describe how to do the line above ("2 manubri", "passo stretto", "simultaneo") belong to it.
   const CONT = /^(con\b|passo stretto|\d\s*manubri[o]?\b|simultaneo|\d\s*gamba\b|b-stance)/i;
@@ -785,7 +797,7 @@ function renderSettings() {
       <li>In the app, go to <b>Programme</b> › <b>Import programme</b> and select all three files together.</li>
       <li>Check the name (e.g. Cycle 52) and tap <b>Add cycle</b>. It becomes the current cycle.</li>
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
-      <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with two-move ones in colour: if one looks wrong, tell Claude.</li>
+      <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with two-move ones in colour: if one is really a single move, tap it (tap again to undo).</li>
     </ol></details>
     <details><summary><b>Progress</b></summary><p style="font-size:14px">Search an exercise to see charts of weight, reps or time across all cycles; filter by variant (e.g. iso). Tap the chart to see each point. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
@@ -1247,6 +1259,19 @@ async function loadXLSX() {
   return window.XLSX;
 }
 let pending = null;
+function showImport() {
+  const c = pending; if (!c) return;
+  if ($("#iLabel")) { c.label = $("#iLabel").value; c.when = $("#iWhen").value; }
+  const existing = findCycle(c.id);
+  openSheet(`<h3>New programme</h3>
+      <label class="f"><span>Name</span><input id="iLabel" value="${esc(c.label)}"></label>
+      <label class="f"><span>When</span><input id="iWhen" value="${esc(c.when)}"></label>
+      <p class="muted" style="font-size:14px">${esc(c.duration)}</p>
+      <p class="muted" style="font-size:13px">Check how each exercise was read. Two-move exercises are in colour. If one is really a single move, tap it; tap again to undo.</p>
+      ${c.days.map((d) => `<p><b>Day ${esc(d.id)}</b> · ${d.exercises.length} exercises</p><ul class="imp">${d.exercises.map((e) => { const { hdr, ms } = exParts(e); const di = c.days.indexOf(d), ei = d.exercises.indexOf(e); return `<li${!hdr && ms.length > 1 ? ' class="two"' : e.one ? ' class="one"' : ""}${!hdr && (ms.length > 1 || e.one) ? ` data-act="one" data-d="${di}" data-e="${ei}"` : ""}>${hdr ? `<b>${esc(hdr)}</b>: ` : ""}${ms.length > 1 ? ms.map((m, i) => `${i + 1}. ${esc(m)}`).join(" + ") : esc(ms[0] || "")}</li>`; }).join("")}</ul>`).join("")}
+      ${existing ? `<p style="font-size:14px">${esc(existing.label)} already exists. Saving replaces its programme and keeps anything you've logged in it.</p>` : ""}
+      <div class="acts"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="import-save">${existing ? "Replace" : "Add cycle"}</button></div>`);
+}
 async function onImport(files) {
   if (!files.length) return;
   try {
@@ -1257,14 +1282,7 @@ async function onImport(files) {
     pending = c;
     const existing = findCycle(c.id);
     if (existing && existing.when) c.when = existing.when;
-    openSheet(`<h3>New programme</h3>
-      <label class="f"><span>Name</span><input id="iLabel" value="${esc(c.label)}"></label>
-      <label class="f"><span>When</span><input id="iWhen" value="${esc(c.when)}"></label>
-      <p class="muted" style="font-size:14px">${esc(c.duration)}</p>
-      <p class="muted" style="font-size:13px">Check how each exercise was read. Two-move exercises are in colour: if one is really a single move, tell Claude before training.</p>
-      ${c.days.map((d) => `<p><b>Day ${esc(d.id)}</b> · ${d.exercises.length} exercises</p><ul class="imp">${d.exercises.map((e) => { const { hdr, ms } = exParts(e); return `<li${!hdr && ms.length > 1 ? ' class="two"' : ""}>${hdr ? `<b>${esc(hdr)}</b>: ` : ""}${ms.length > 1 ? ms.map((m, i) => `${i + 1}. ${esc(m)}`).join(" + ") : esc(ms[0] || "")}</li>`; }).join("")}</ul>`).join("")}
-      ${existing ? `<p style="font-size:14px">${esc(existing.label)} already exists. Saving replaces its programme and keeps anything you've logged in it.</p>` : ""}
-      <div class="acts"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="import-save">${existing ? "Replace" : "Add cycle"}</button></div>`);
+    showImport();
   } catch (e) {
     toast("Couldn't read the files: " + e.message, 5000);
   }
@@ -1281,6 +1299,7 @@ function importSave() {
       const od = existing.days.find((x) => x.id === d.id); if (!od) return;
       d.exercises.forEach((e, ei) => {
         const oe = od.exercises.find((x) => keyOf(x.name) === keyOf(e.name)) || od.exercises[ei];
+        if (oe && oe.one && e.one == null) e.one = true;
         if (oe) e.weeks.forEach((w, k) => { const ow = oe.weeks[k]; if (ow) LOGF.forEach((f) => { if (ow[f] != null && ow[f] !== "") w[f] = ow[f]; }); });
       });
       if (!d.cooldown) d.cooldown = od.cooldown;
@@ -1483,6 +1502,7 @@ document.addEventListener("click", (ev) => {
     }
     case "import": $("#fImport").click(); break;
     case "import-save": importSave(); break;
+    case "one": { const e = pending && pending.days[+el.dataset.d].exercises[+el.dataset.e]; if (e) { e.one = !e.one; oneVer++; showImport(); } break; }
     case "prog": ui.prog = D.key; ui.metric = null; ui.variant = "All"; saveUI(); render(); window.scrollTo(0, 0); break;
     case "prog-back": ui.prog = null; saveUI(); render(); break;
     case "metric": ui.metric = D.m; saveUI(); render(); break;
