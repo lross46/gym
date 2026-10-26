@@ -139,9 +139,6 @@ label.f textarea{min-height:76px;resize:vertical}
 .wo .head b{font-size:15px;color:var(--muted);font-weight:650;text-align:center}
 .ib{border:0;background:var(--surface);border-radius:14px;min-width:44px;height:44px;font-size:18px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;padding:0 10px;box-shadow:var(--shadow)}
 .ib svg{width:22px;height:22px}
-.prog{display:flex;gap:4px;margin:8px 0 18px}
-.prog i{flex:1;height:5px;border-radius:3px;background:var(--line)}
-.prog i.f{background:var(--accent)}
 .wo .title{font-size:27px;font-weight:850;line-height:1.12;letter-spacing:-.02em}
 .wo .title span{display:block}
 .wo .title .then{color:var(--accent-text)}
@@ -188,7 +185,7 @@ label.f textarea{min-height:76px;resize:vertical}
 .wl.cur{outline:2px solid var(--accent);outline-offset:-2px}
 .wl h3{font-size:17px}
 .wl h3 .then{color:var(--accent-text)}
-.sr{display:grid;grid-template-columns:34px 1fr 78px 46px;align-items:center;gap:8px;height:48px;border-radius:12px;padding:0 4px 0 8px;margin-top:4px}
+.sr{display:grid;grid-template-columns:24px 1fr 50px 42px;align-items:center;gap:8px;height:48px;border-radius:12px;padding:0 4px 0 8px;margin-top:4px}
 .sr.hd{height:auto;margin-top:12px;font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--muted)}
 .sr.ok{background:var(--done)}
 .sr input{width:100%;height:38px;border:0;border-radius:10px;background:var(--soft);text-align:center;font-weight:750}
@@ -326,10 +323,11 @@ function preNote(e, w) {
 }
 // mv: one move of a combined exercise, whose weight is logged separately in w.kgs.
 function kgOf(w, mv) {
-  const num = (x) => { const v = parseFloat(String(x).replace(",", ".")); return isNaN(v) ? null : v; };
+  // Per-set weights are kept as "20/22.5/25"; the heaviest set counts.
+  const num = (x) => { const vs = String(x).split("/").map((y) => parseFloat(y.replace(",", "."))).filter((v) => !isNaN(v)); return vs.length ? Math.max(...vs) : null; };
   if (mv) return w.kgs && w.kgs[mv] ? num(w.kgs[mv]) : null;
   if (hasKgs(w)) { const vs = Object.values(w.kgs).map(num).filter((v) => v != null); if (vs.length) return Math.max(...vs); }
-  if (w.kg) { const v = parseFloat(String(w.kg).replace(",", ".")); if (!isNaN(v)) return v; }
+  if (w.kg) { const v = num(w.kg); if (v != null) return v; }
   // First weight mentioned in the note: later ones are usually asides ("max possible 25 kg").
   const re = /(\d+(?:[.,]\d+)?)\s*(?:kg|kkg|kili|kilos?|chili)\b/gi;
   let m;
@@ -375,6 +373,14 @@ function setWeight(w, inp) {
   const v = inp.value.trim();
   if (inp.dataset.mv) { w.kgs = Object.assign({}, w.kgs, { [inp.dataset.mv]: v }); if (!v) delete w.kgs[inp.dataset.mv]; }
   else w.kg = v;
+}
+// Weight per set, one value per set joined by "/" (22,5 keeps its decimal comma), in w.kg or w.kgs[move].
+const kgList = (w, m) => String((m ? w.kgs && w.kgs[m] : w.kg) || "").split("/").map((x) => x.trim());
+function setKgList(w, m, a) {
+  a = a.slice(); while (a.length && !a[a.length - 1]) a.pop();
+  const v = a.join("/");
+  if (!m) w.kg = v;
+  else { w.kgs = Object.assign({}, w.kgs, { [m]: v }); if (!v) delete w.kgs[m]; }
 }
 
 /* ---------- exercise index and history ---------- */
@@ -706,8 +712,8 @@ function renderSettings() {
     <h3>How to use</h3>
     <details><summary><b>Train</b></summary><ol style="font-size:14px;padding-left:20px">
       <li><b>Today</b> shows this week (green days = trained) and the next session. Tap <b>Change</b> to pick another day or week.</li>
-      <li>Tap <b>Start workout</b>. It goes warm-up › one exercise per screen › stretching. The list icon (top right) shows all exercises at once instead.</li>
-      <li>Tap a set circle when you finish the set: it ticks and starts the rest timer. Set the weight with − / + (or tap the number).</li>
+      <li>Tap <b>Start workout</b> to see all exercises of the day as a list (warm-up at the top, stretching at the bottom).</li>
+      <li>Each set has its own row: type the kg and reps, then tap ✓ to tick it and start the rest timer. An empty kg box suggests the set before (or last time).</li>
       <li>"Last time" compares like with like (1" iso with 1" iso). Reps, notes and questions are under ✎.</li>
       <li>You can also tap any exercise on Today to log it without starting a workout.</li>
     </ol></details>
@@ -800,7 +806,7 @@ function saveLog(cid, di, ei, k) {
 }
 
 /* ---------- workout mode ---------- */
-let wo = null; // { cid, di, k, step, sets: {}, view: "one" | "list" }
+let wo = null; // { cid, di, k, step, sets: {} }
 let wakeLock = null;
 async function keepAwake() { try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch {} }
 function woExercises() {
@@ -811,8 +817,8 @@ function markDone(w) { w.done = true; w.at = Date.now(); if (!w.doneAt) w.doneAt
 function startWorkout() {
   const c = currentCycle(); if (!c) return;
   audioInit();
-  wo = { cid: c.id, di: ui.sel.di, k: ui.sel.k, step: 0, sets: {}, view: ui.woView === "list" ? "list" : "one" };
-  if (wo.view === "list") wo.step = firstOpen();
+  wo = { cid: c.id, di: ui.sel.di, k: ui.sel.k, step: 0, sets: {} };
+  wo.step = firstOpen();
   $("#wo").hidden = false; document.body.style.overflow = "hidden";
   keepAwake();
   timerDefaults();
@@ -833,10 +839,10 @@ function setsDone(ei, w) {
 const ltHtml = (lt, style = "") => (lt ? `<p class="muted" style="font-size:13px;margin:10px 2px 0;${style}"><b>Last time</b>${lt.other ? ` (${esc(lt.other.toLowerCase())})` : ""} · ${esc(lt.label)}<br>${esc(logText(lt.w).slice(0, 160))}</p>` : "");
 // One big weight box per move, with −/+ in 2.5 kg steps; the placeholder is last time's weight.
 const LOADED_RE = /manubr|sovracc|disc|kettle|dumb|bilanc|pes[oi]|weight|thruster|snatch|goblet|rdl|press|curl|rematore|row|stacc|swing|croci|alzate|affondi|squat|step up|hip thrust|ponte|kick ?back|lento|spinte|turkish|clean/i;
-function weightBoxes(e, w, lt, ei) {
-  const ms = moves(e.name);
+function weightBoxes(e, w, lt, ei, skip = []) {
+  const ms = moves(e.name).filter((m) => !skip.includes(m));
   const open = wo.kgOpen || (wo.kgOpen = {});
-  return (ms.length > 1 ? ms : [null]).map((m) => {
+  return (ms.length > 1 || skip.length ? ms : [null]).map((m) => {
     const val = m ? (w.kgs && w.kgs[m]) || "" : w.kg || "";
     const last = lt ? kgOf(lt.w, m || undefined) : null;
     // Bodyweight moves in a combo (push ups, leg raises) get a small "+ kg" button instead of a big box.
@@ -846,50 +852,32 @@ function weightBoxes(e, w, lt, ei) {
       <button type="button" data-act="kg-adj" data-d="-2.5" aria-label="Less weight">−</button><button type="button" data-act="kg-adj" data-d="2.5" aria-label="More weight">+</button></div>`;
   }).join("");
 }
-const ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>';
-const ICON_CARD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="5" y="3.5" width="14" height="17" rx="3"/></svg>';
 function renderWo() {
   const { c, d, list } = woExercises();
-  const s = wo.step, last = list.length + 1;
-  const where = wo.view === "list" ? `Day ${esc(d.id)} · Week ${esc(weekLabel(c, wo.k))}` : s === 0 ? "Warm-up" : s === last ? "Stretching" : `Exercise ${s} of ${list.length}`;
-  const head = `<div class="head"><button class="ib" data-act="wo-close" aria-label="Close workout">✕</button><b>${where}</b>
-    <button class="ib" data-act="wo-view" aria-label="${wo.view === "list" ? "One exercise at a time" : "See all exercises"}">${wo.view === "list" ? ICON_CARD : ICON_LIST}</button></div>`;
-  let body, foot;
-  if (wo.view === "list") {
-    body = list.map(({ e, ei }, i) => woCard(c, e, ei, i)).join("") + '<div style="height:150px"></div>';
-    foot = `<section class="tmr" id="timerBox" style="margin:0 0 10px"></section><div class="in"><button class="btn" data-act="wo-finish">Finish workout ✓</button></div>`;
-  } else {
-    const bar = `<div class="prog">${list.map((_, i) => `<i class="${i < s ? "f" : ""}"></i>`).join("")}</div>`;
-    if (s === 0) body = `${bar}<div class="title">Warm-up</div><div class="card" style="margin-top:14px"><p class="pre">${nl(d.warmup || "No warm-up written for this day.")}</p></div><section class="tmr" id="timerBox"></section>`;
-    else if (s === last) body = `${bar}<div class="title">Stretching</div><div class="card" style="margin-top:14px"><p class="pre">${nl(d.cooldown || "Stretch the muscles you worked.")}</p></div>
-      <div class="card"><b>${list.filter(({ e }) => logged(e.weeks[wo.k])).length} of ${list.length}</b> exercises logged.</div><section class="tmr" id="timerBox"></section>`;
-    else {
-      const { e, ei } = list[s - 1];
-      const w = e.weeks[wo.k], lt = lastTime(c, e, wo.k);
-      const target = parseSets(w.sets), dn = setsDone(ei, w);
-      const extra = w.res || w.log || w.q;
-      body = `${bar}
-        <div class="title">${titleHtml(e)}</div>
-        ${rxChips(w)}${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
-        ${e.desc ? `<div class="note pre">${nl(e.desc)}</div>` : ""}
-        <div class="lab">${target ? "Sets · tap each one when done" : "Tap when done"}</div>
-        <div class="sets">${Array.from({ length: target || 1 }, (_, i) => `<button type="button" data-act="set" data-ei="${ei}" data-i="${i}" class="${i < dn ? "on" : i === dn ? "next" : ""}" aria-label="Set ${i + 1}">${i < dn || !target ? "✓" : i + 1}</button>`).join("")}</div>
-        ${weightBoxes(e, w, lt, ei)}
-        ${ltHtml(lt)}
-        <section class="tmr" id="timerBox"></section>
-        <details class="more"${extra ? " open" : ""}><summary>✎ Reps done, notes, question for trainer</summary>
-          <label class="f"><span>Reps / time done</span><input data-wf="res" data-ei="${ei}" value="${esc(w.res || "")}" placeholder="12,10,9 or 45s"></label>
-          <label class="f"><span>Notes</span><textarea data-wf="log" data-ei="${ei}" placeholder="How did it feel?">${esc(w.log || "")}</textarea></label>
-          <label class="f"><span>Question for trainer</span><textarea data-wf="q" data-ei="${ei}" style="min-height:52px">${esc(w.q || "")}</textarea></label>
-        </details>`;
-    }
-    foot = `<div class="in"><button class="ib" data-act="wo-prev" aria-label="Back" ${s === 0 ? "disabled" : ""}>‹</button>
-      ${s === last ? '<button class="btn" data-act="wo-finish">Finish workout ✓</button>' : `<button class="btn" data-act="wo-next">${s === 0 ? "Start exercises" : s === list.length ? "Stretching" : "Next exercise"} →</button>`}</div>`;
-  }
+  const head = `<div class="head"><button class="ib" data-act="wo-close" aria-label="Close workout">✕</button><b>${esc(c.label)} · Day ${esc(d.id)} · Week ${esc(weekLabel(c, wo.k))}</b><span style="width:44px"></span></div>`;
+  const body = (d.warmup ? `<details class="wl"><summary><b>Warm-up</b></summary><p class="pre" style="margin-top:8px">${nl(d.warmup)}</p></details>` : "")
+    + list.map(({ e, ei }, i) => woCard(c, e, ei, i)).join("")
+    + `<details class="wl"><summary><b>Stretching</b></summary><p class="pre" style="margin-top:8px">${nl(d.cooldown || "Stretch the muscles you worked.")}</p></details>`
+    + '<div style="height:150px"></div>';
+  const foot = `<section class="tmr" id="timerBox" style="margin:0 0 10px"></section><div class="in"><button class="btn" data-act="wo-finish">Finish workout ✓</button></div>`;
   $("#wo").innerHTML = `<div class="wrap">${head}${body}</div><div class="foot">${foot}</div>`;
   renderTimer();
 }
-// List view: every exercise as a card with one row per set (reps typed per set go into "res" as 12,10,9).
+// Every exercise as a card with one row per set: kg per set ("20/22.5") and reps per set ("12,10,9").
+// Loaded moves get a kg column each (at most two); an empty box suggests the set before, else the same set last time.
+function kgCols(e, w, lt) {
+  const ms = moves(e.name);
+  if (ms.length < 2) return [null];
+  if (exParts(e).hdr) return [];
+  const L = ms.filter((m) => LOADED_RE.test(m) || (w.kgs && w.kgs[m]) || (lt && kgOf(lt.w, m) != null));
+  return L.length <= 2 ? L : [];
+}
+function setKgPh(w, lt, j, m) {
+  const mine = kgList(w, m);
+  for (let i = Math.min(j, mine.length) - 1; i >= 0; i--) if (mine[i]) return mine[i];
+  const lk = lt ? kgList(lt.w, m).filter(Boolean) : [];
+  return (lt && kgList(lt.w, m)[j]) || lk[lk.length - 1] || "";
+}
 function woCard(c, e, ei, i) {
   const w = e.weeks[wo.k], lt = lastTime(c, e, wo.k);
   const n = parseSets(w.sets) || 1, dn = setsDone(ei, w);
@@ -898,32 +886,36 @@ function woCard(c, e, ei, i) {
   const lreps = lt && /^[\d\s,]+$/.test(lt.w.res || "") ? lt.w.res.split(",").map((x) => x.trim()) : [];
   const ph = (String(w.reps || "").match(/^\s*(\d+)/) || [])[1] || "";
   const { hdr, ms } = exParts(e);
+  const cols = kgCols(e, w, lt);
+  const first = (m) => m.split(/\s+/)[0].slice(0, 7).toUpperCase();
+  const short = (m, j) => (cols.length < 2 ? "KG" : first(cols[0]) === first(cols[1]) ? `KG ${j + 1}` : first(m));
+  const grid = `style="grid-template-columns:24px 1fr ${cols.map(() => "54px").join(" ")} ${listy ? "50px" : ""} 42px"`;
   return `<section class="wl${i === wo.step - 1 ? " cur" : ""}" id="wl${ei}">
     <h3>${hdr ? `<span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>` : ""}${ms.map((m, j) => (j ? `<span class="then"> → ${esc(m)}</span>` : esc(m))).join("")}</h3>
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
     ${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
-    ${weightBoxes(e, w, lt, ei)}
-    <div class="sr hd"><span>SET</span><span>LAST</span><span>${listy ? "REPS" : ""}</span><span></span></div>
-    ${Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}"><b>${j + 1}</b><span class="muted">${esc(lreps[j] || "–")}</span>
-      ${listy ? `<input data-wf="rep" data-ei="${ei}" data-i="${j}" inputmode="numeric" value="${esc(reps[j] || "")}" placeholder="${esc(ph)}" aria-label="Reps set ${j + 1}">` : "<span></span>"}
+    ${ms.length > 1 ? weightBoxes(e, w, lt, ei, cols) : ""}
+    <div class="sr hd" ${grid}><span>SET</span><span>LAST</span>${cols.map((m, j) => `<span>${esc(short(m, j))}</span>`).join("")}${listy ? "<span>REPS</span>" : ""}<span></span></div>
+    ${Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" ${grid}><b>${j + 1}</b><span class="muted">${esc([cols.length === 1 && lt && (kgList(lt.w, cols[0])[j] || "") ? kgList(lt.w, cols[0])[j] + "kg" : "", lreps[j]].filter(Boolean).join(" × ") || "–")}</span>
+      ${cols.map((m) => `<input data-wf="kgset" data-ei="${ei}" data-mv="${esc(m || "")}" data-i="${j}" inputmode="decimal" value="${esc(kgList(w, m)[j] || "")}" placeholder="${esc(setKgPh(w, lt, j, m))}" aria-label="Kg ${esc(m || "")} set ${j + 1}">`).join("")}
+      ${listy ? `<input data-wf="rep" data-ei="${ei}" data-i="${j}" inputmode="numeric" value="${esc(reps[j] || "")}" placeholder="${esc(ph)}" aria-label="Reps set ${j + 1}">` : ""}
       <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Set ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("")}
     ${listy ? "" : `<p class="muted" style="font-size:13px">Done: ${esc(w.res)}</p>`}
     <button type="button" class="link" data-act="log" data-cid="${esc(c.id)}" data-di="${wo.di}" data-ei="${ei}" data-k="${wo.k}">✎ Notes${w.log || w.q ? " ✓" : ""}</button>
   </section>`;
 }
-function woGo(delta) {
-  const { list } = woExercises();
-  wo.step = Math.max(0, Math.min(list.length + 1, wo.step + delta));
-  if (!T.running || T.mode === "rest") { timerStop(true); timerDefaults(); }
-  $("#wo").scrollTop = 0;
-  renderWo();
-  if (dirty) scheduleSync();
-}
 $("#wo").addEventListener("input", (ev) => {
   const inp = ev.target.closest("[data-wf]"); if (!inp || !wo) return;
   const it = woExercises().list.find((x) => x.ei === +inp.dataset.ei); if (!it) return;
   const w = it.e.weeks[wo.k], f = inp.dataset.wf;
-  if (f === "kg") { setWeight(w, inp); inp.style.width = (inp.value || inp.placeholder).length + 0.7 + "ch"; }
+  if (f === "kgset") {
+    const m = inp.dataset.mv || null, a = kgList(w, m);
+    while (a.length <= +inp.dataset.i) a.push("");
+    a[+inp.dataset.i] = inp.value.trim();
+    setKgList(w, m, a);
+    const lt = lastTime(findCycle(wo.cid), it.e, wo.k);
+    inp.closest(".wl").querySelectorAll(`[data-wf="kgset"][data-mv="${CSS.escape(inp.dataset.mv)}"]`).forEach((x) => { if (!x.value) x.placeholder = setKgPh(w, lt, +x.dataset.i, m); });
+  } else if (f === "kg") { setWeight(w, inp); inp.style.width = (inp.value || inp.placeholder).length + 0.7 + "ch"; }
   else if (f === "rep") {
     const a = String(w.res || "").split(",").map((x) => x.trim());
     while (a.length <= +inp.dataset.i) a.push("");
@@ -1340,8 +1332,6 @@ document.addEventListener("click", (ev) => {
     case "restore": $("#fRestore").click(); break;
     case "theme": LS.set("gym.theme", D.t); applyTheme(); render(); break;
     case "wo-close": if (confirm("Leave the workout? What you've logged is saved.")) endWorkout(); break;
-    case "wo-next": woGo(1); break;
-    case "wo-prev": woGo(-1); break;
     case "wo-finish": {
       const { list } = woExercises();
       list.forEach(({ e }) => { const w = e.weeks[wo.k]; if (!w.done) markDone(w); });
@@ -1354,14 +1344,25 @@ document.addEventListener("click", (ev) => {
       const w = item.e.weeks[wo.k], target = parseSets(w.sets) || 1;
       const before = setsDone(ei, w);
       wo.sets[ei] = i < before ? i : i + 1;
+      // Ticking a set with an empty weight box keeps the suggested weight.
+      if (i >= before) {
+        const lt = lastTime(findCycle(wo.cid), item.e, wo.k);
+        for (const m of kgCols(item.e, w, lt)) {
+          const a = kgList(w, m);
+          if (a[i]) continue;
+          while (a.length <= i) a.push("");
+          a[i] = setKgPh(w, lt, i, m);
+          if (a[i]) setKgList(w, m, a);
+        }
+      }
       if (wo.sets[ei] > 0) { markDone(w); save(false); }
-      if (wo.view === "list") wo.step = list.indexOf(item) + 1;
+      wo.step = list.indexOf(item) + 1;
       const ticked = wo.sets[ei] > before, rest = parseTime(w.rest);
       const y = $("#wo").scrollTop;
       if (ticked && rest) { T.restore = T.mode !== "rest" && wo.sets[ei] < target; T.mode = "rest"; T.secs = rest; timerStop(true); }
       renderWo(); $("#wo").scrollTop = y;
       if (ticked && rest) timerStart();
-      if (ticked && wo.sets[ei] >= target) toast(wo.view === "list" ? "All sets done 💪" : "All sets done 💪 Tap Next when ready");
+      if (ticked && wo.sets[ei] >= target) toast("All sets done 💪");
       break;
     }
     case "kg-adj": {
@@ -1369,14 +1370,6 @@ document.addEventListener("click", (ev) => {
       const base = parseFloat(String(inp.value || inp.placeholder || "0").replace(",", ".")) || 0;
       inp.value = String(Math.max(0, Math.round((base + +D.d) * 100) / 100));
       inp.dispatchEvent(new Event("input", { bubbles: true }));
-      break;
-    }
-    case "wo-view": {
-      wo.view = wo.view === "list" ? "one" : "list"; ui.woView = wo.view; saveUI();
-      const n = woExercises().list.length;
-      if (wo.view === "list" && (wo.step < 1 || wo.step > n)) wo.step = firstOpen();
-      renderWo();
-      const cur = $("#wo .wl.cur"); if (cur) cur.scrollIntoView({ block: "start" }); else $("#wo").scrollTop = 0;
       break;
     }
     case "kg-open": { (wo.kgOpen = wo.kgOpen || {})[D.k] = true; const y = $("#wo").scrollTop; renderWo(); $("#wo").scrollTop = y; break; }
