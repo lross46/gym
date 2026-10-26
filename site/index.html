@@ -1081,7 +1081,8 @@ function openShare(cid, k) {
     <div class="seg">${[-1, ...Array.from({ length: nW }, (_, j) => j)].map((j) => `<button type="button" data-act="share" data-id="${esc(c.id)}" data-k="${j}" aria-pressed="${j === k}">${j < 0 ? "Whole cycle" : "Week " + esc(weekLabel(c, j))}</button>`).join("")}</div>
     <label class="f"><span>Message (you can edit it)</span><textarea id="shText" style="min-height:240px">${esc(shareText(c, k))}</textarea></label>
     <div class="acts"><button class="btn ghost" data-act="close">Close</button><button class="btn" data-act="share-send">Share…</button></div>
-    <div class="row" style="justify-content:center;gap:18px;margin-top:10px;font-size:14px"><a href="#" data-act="share-wa">WhatsApp</a><a href="#" data-act="share-mail">Email</a><a href="#" data-act="share-copy">Copy</a></div>`);
+    <div class="row" style="justify-content:center;gap:18px;margin-top:10px;font-size:14px"><a href="#" data-act="share-wa">WhatsApp</a><a href="#" data-act="share-mail">Email</a><a href="#" data-act="share-copy">Copy</a></div>
+    <button class="btn ghost" style="width:100%;margin-top:14px" data-act="excel-cycle" data-id="${esc(c.id)}">⬇ Excel file of ${esc(c.label)}</button>`);
 }
 async function shareSend(how) {
   const text = $("#shText").value;
@@ -1154,11 +1155,11 @@ async function shareOrDownload(blob, name) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
-async function exportExcel() {
+async function exportExcel(only) {
   try {
     const X = await loadXLSX();
     const wb = X.utils.book_new(), used = new Set();
-    for (const c of byOrder()) {
+    for (const c of only ? [only] : byOrder()) {
       const W = 6, nd = c.days.length, aoa = [];
       const row = () => new Array(nd * W).fill("");
       let r = row(); r[0] = "Durata: " + (c.duration || ""); aoa.push(r);
@@ -1178,7 +1179,7 @@ async function exportExcel() {
       X.utils.book_append_sheet(wb, ws, name);
     }
     const out = X.write(wb, { bookType: "xlsx", type: "array" });
-    await shareOrDownload(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `gym-log-${stamp()}.xlsx`);
+    await shareOrDownload(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), only ? `${only.label.replace(/[^\w-]+/g, "-")}-${stamp()}.xlsx` : `gym-log-${stamp()}.xlsx`);
   } catch (e) { toast("Excel export failed: " + e.message, 5000); }
 }
 function exportJSON() { shareOrDownload(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }), `gym-log-backup-${stamp()}.json`); }
@@ -1329,6 +1330,7 @@ document.addEventListener("click", (ev) => {
       sync().then(() => { if (syncStatus.s === "ok") toast("Connected and synced"); else toast(syncText(), 5000); });
       break;
     case "excel": exportExcel(); break;
+    case "excel-cycle": exportExcel(findCycle(D.id)); break;
     case "share": ev.preventDefault(); openShare(D.id, num("k")); break;
     case "share-send": shareSend(); break;
     case "share-wa": ev.preventDefault(); shareSend("wa"); break;
