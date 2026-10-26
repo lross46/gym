@@ -223,9 +223,14 @@ label.f textarea{min-height:76px;resize:vertical}
 .stats div{flex:1;background:var(--soft);border-radius:14px;padding:10px 12px}
 .stats b{display:block;font-size:20px;font-weight:800}
 .hist{margin-top:8px}
-.hist div{border-top:1px solid var(--line);padding:10px 0;font-size:14px}
-.hist div small{display:block;color:var(--muted)}
-.hist div p{margin:2px 0 0;white-space:pre-wrap}
+.tip .tk{color:var(--accent)}
+.hc{border-top:1px solid var(--line);padding:10px 0 4px;font-size:14px}
+.hh{margin-bottom:4px}.hh span{color:var(--muted)}.hw{display:block;font-size:12px;color:var(--muted)}
+.hr{display:grid;grid-template-columns:48px 1fr;column-gap:8px;padding:5px 6px;margin:0 -6px;border-radius:8px;transition:background .3s}
+.hr.hl{background:var(--accent-soft)}
+.hk{font-weight:700;color:var(--accent-text);font-size:13px}
+.hx{color:var(--muted);font-size:13px}
+.hv,.hn{grid-column:2;white-space:pre-line}.hv{font-weight:600}.hn{color:var(--ink)}.hn i{color:var(--muted);font-size:12px;margin-right:4px}
 </style>
 </head>
 <body>
@@ -731,6 +736,26 @@ function variantOf(w) {
   return "Normal";
 }
 const METRICS = { kg: ["Weight", (v) => `${fmtNum(v)} kg`], reps: ["Reps", (v) => `${v} reps`], secs: ["Time", (v) => fmtSecs(v)] };
+// History grouped per cycle and day: one card each, weeks inside.
+function histGroups(items) {
+  const out = [], by = new Map();
+  for (const it of items) {
+    const k = it.c.id + "|" + it.d.id + "|" + it.e.name;
+    if (!by.has(k)) {
+      const w = it.mv ? exParts(it.e).ms.filter((m) => m !== it.mv).map((m) => m.replace(/\s*\(\s*"?pre-?affaticante"?\s*\)/i, "")).join(" + ") : "";
+      by.set(k, { c: it.c, d: it.d, with: w, items: [] }); out.push(by.get(k));
+    }
+    by.get(k).items.push(it);
+  }
+  for (const h of out) h.items.sort((a, b) => a.w.w - b.w.w);
+  return out;
+}
+// Logged result: numbers in the accent colour, notes in normal text; old cycles keep their original notes.
+function noteHtml(it) {
+  if (isOldW(it.w)) return it.w.log ? `<span class="hn"><i>Old notes</i> ${esc(it.w.log)}</span>` : "";
+  const nums = setLines(it.w, it.e) || logParts(it.w).filter(Boolean).join(" · ");
+  return (nums ? `<span class="hv">${esc(nums)}</span>` : "") + (it.w.log ? `<span class="hn">${esc(it.w.log)}</span>` : "");
+}
 function renderExercise(g) {
   const pts = groupStats(g);
   const avail = Object.keys(METRICS).filter((m) => pts[m].length);
@@ -751,8 +776,19 @@ function renderExercise(g) {
     <div class="stats"><div><small class="muted">Latest</small><b>${METRICS[metric][1](vals.at(-1))}</b></div><div><small class="muted">Best</small><b>${METRICS[metric][1](Math.max(...vals))}</b></div><div><small class="muted">Entries</small><b>${vals.length}</b></div></div>
     <div class="chart" id="chart"></div>` : `<p class="muted">No weights, reps or times found in your notes for this exercise yet.</p>`}
   </section>
-  <section class="card"><h3>History</h3><div class="hist">${hist.map((it) => `<div><small>${esc(cName(it.c))} · Day ${esc(it.d.id)} · week ${esc(it.w.w)} — ${esc([it.w.sets, it.w.reps].filter(Boolean).join(" × "))}${it.mv ? ` · with ${esc(exParts(it.e).ms.filter((m) => m !== it.mv).map((m) => m.replace(/\s*\(\s*"?pre-?affaticante"?\s*\)/i, "")).join(" + "))}` : ""}</small><p style="white-space:pre-line">${esc(fullLog(it.w, it.e))}</p></div>`).join("")}</div></section>`);
-  if (series.length) drawChart($("#chart"), series, METRICS[metric][1], metric === "secs" ? (v) => fmtClock(v) : fmtNum);
+  <section class="card"><h3>History</h3><div class="hist">${histGroups(hist).map((h) => `<div class="hc"><div class="hh"><b>${esc(cName(h.c))}</b> <span>· Day ${esc(h.d.id)}</span>${h.with ? `<span class="hw">with ${esc(h.with)}</span>` : ""}</div>${h.items.map((it) => `<div class="hr" data-hi="${g.items.indexOf(it)}"><span class="hk">Wk ${esc(it.w.w)}</span><span class="hx">${esc([it.w.sets, it.w.reps].filter(Boolean).join(" × "))}</span>${noteHtml(it)}</div>`).join("")}</div>`).join("")}</div></section>`);
+  let tapX = null;
+  const pick = (it) => {
+    document.querySelectorAll(".hr.hl").forEach((x) => x.classList.remove("hl"));
+    const r = document.querySelector(`.hr[data-hi="${g.items.indexOf(it)}"]`);
+    if (r) { r.classList.add("hl"); pick.row = r; }
+  };
+  if (series.length) {
+    drawChart($("#chart"), series, METRICS[metric][1], metric === "secs" ? (v) => fmtClock(v) : fmtNum, pick);
+    const svg = $("#chart svg");
+    svg.addEventListener("pointerdown", (e) => { tapX = e.clientX; });
+    svg.addEventListener("pointerup", (e) => { if (tapX != null && Math.abs(e.clientX - tapX) < 8 && pick.row) pick.row.scrollIntoView({ behavior: "smooth", block: "center" }); tapX = null; });
+  }
 }
 function niceTicks(min, max, n = 4) {
   if (min === max) { min = min - 1; max = max + 1; }
@@ -762,7 +798,7 @@ function niceTicks(min, max, n = 4) {
   const t = []; for (let v = lo; v <= hi + step / 2; v += step) t.push(+v.toFixed(6));
   return t;
 }
-function drawChart(el, series, fmt, axisFmt = fmtNum) {
+function drawChart(el, series, fmt, axisFmt = fmtNum, onPick = null) {
   const W = Math.max(280, el.clientWidth), H = 220, L = 40, R = 12, T = 12, B = 30;
   const ticks = niceTicks(Math.min(...series.map((p) => p.v)), Math.max(...series.map((p) => p.v)));
   const y0 = ticks[0], y1 = ticks.at(-1);
@@ -786,7 +822,8 @@ function drawChart(el, series, fmt, axisFmt = fmtNum) {
     const p = series[i];
     hair.setAttribute("x1", X(i)); hair.setAttribute("x2", X(i)); hair.setAttribute("visibility", "visible");
     hdot.setAttribute("cx", X(i)); hdot.setAttribute("cy", Y(p.v)); hdot.setAttribute("visibility", "visible");
-    tip.innerHTML = `<b>${esc(fmt(p.v))}</b><br>${esc(cName(p.it.c))} · Day ${esc(p.it.d.id)} · wk ${esc(p.it.w.w)}<br>${esc([p.it.w.sets, p.it.w.reps].filter(Boolean).join(" × "))}<br><span style="opacity:.8">${esc(logText(p.it.w).slice(0, 120))}</span>`;
+    tip.innerHTML = `<b>${esc(fmt(p.v))}</b><br>${esc(cName(p.it.c))} · Day ${esc(p.it.d.id)} · <b class="tk">Wk ${esc(p.it.w.w)}</b><br><span style="opacity:.7">${esc([p.it.w.sets, p.it.w.reps].filter(Boolean).join(" × "))}</span>`;
+    if (onPick) onPick(p.it);
     tip.hidden = false;
     tip.style.left = Math.min(Math.max(X(i), 110), W - 110) + "px";
     tip.style.top = Math.max(0, Y(p.v) - tip.offsetHeight - 14) + "px";
@@ -838,7 +875,7 @@ function renderSettings() {
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
       <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with two-move ones in colour: if one is really a single move, tap it (tap again to undo).</li>
     </ol></details>
-    <details><summary><b>Progress</b></summary><p style="font-size:14px">One line per move (combos are split into their moves; Tabata/EMOM blocks are left out). Moves are grouped by body part (Legs, Push, Back, Shoulders, Arms, Core, Full body, Other); tap a group to open it. Moves in your current cycle have a ● and come first. Each line shows the latest value, ▲/▼ against last time, your best and a small trend line. Tap a move for its chart (weight, reps or time; filter by how it was done: normal, iso, eccentric, explosive or in combo) and the history of the weeks you logged. Old values come from your notes, so a few may be missing.</p></details>
+    <details><summary><b>Progress</b></summary><p style="font-size:14px">One line per move (combos are split into their moves; Tabata/EMOM blocks are left out). Moves are grouped by body part (Legs, Push, Back, Shoulders, Arms, Core, Full body, Other); tap a group to open it. Moves in your current cycle have a ● and come first. Each line shows the latest value, ▲/▼ against last time, your best and a small trend line. Tap a move for its chart (weight, reps or time; filter by how it was done: normal, iso, eccentric, explosive or in combo) and its history: one card per cycle with the weeks inside (week in green, programme in grey, what you did in bold, notes below). Tap a point on the chart to jump to and highlight that week in the history. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>Tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send the text by WhatsApp or email.</li>
       <li>Or tap <b>⬇ Excel file of Cycle N</b> on the same screen: one sheet with that cycle, weights, reps, times and notes, one line per set. Your phone then lets you send it.</li>
