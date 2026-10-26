@@ -251,7 +251,7 @@ const LS = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
 };
 const DEFAULTS = { repo: "lross46/gym-data", path: "data/gym.json", token: "" };
-const LOGF = ["log", "kg", "kgs", "res", "done", "at", "doneAt"];
+const LOGF = ["log", "kg", "kgs", "res", "resm", "done", "at", "doneAt"];
 let settings = Object.assign({}, DEFAULTS, LS.get("gym.settings", {}));
 let data = LS.get("gym.data", null) || { version: 1, updated: 0, current: null, cycles: [] };
 delete data.videos;
@@ -271,7 +271,10 @@ const byOrder = () => live().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 const findCycle = (id) => live().find((c) => c.id === id);
 const currentCycle = () => findCycle(data.current) || byOrder().at(-1) || null;
 const hasKgs = (w) => !!(w && w.kgs && Object.values(w.kgs).some(Boolean));
-const logged = (w) => !!(w && (w.done || w.log || w.kg || hasKgs(w) || w.res));
+const hasResm = (w) => !!(w && w.resm && Object.values(w.resm).some(Boolean));
+const logged = (w) => !!(w && (w.done || w.log || w.kg || hasKgs(w) || w.res || hasResm(w)));
+// Reps per set of one move of a combined exercise ("12,10,9" in w.resm[move]).
+const repList = (w, m) => String((m ? w.resm && w.resm[m] : w.res) || "").split(",").map((x) => x.trim());
 let index = null;
 
 function save(push = true) {
@@ -367,6 +370,10 @@ const fmtNum = (v) => (Math.round(v * 10) / 10).toString();
 function logText(w) { return [...logParts(w), w.log || ""].filter(Boolean).join(" · "); }
 // Weight and reps/time of a log, without the note.
 function logParts(w) {
+  if (hasResm(w)) {
+    const ms = [...new Set([...Object.keys(w.kgs || {}), ...Object.keys(w.resm)])];
+    return [ms.map((m) => [m, w.kgs && /[1-9]/.test(w.kgs[m] || "") ? `${w.kgs[m]} kg` : "", w.resm[m] ? `× ${w.resm[m]}` : ""].filter(Boolean).join(" ")).join(" + "), w.res || ""];
+  }
   const kgs = hasKgs(w) ? Object.entries(w.kgs).filter(([, v]) => v && /[1-9]/.test(v)).map(([m, v]) => `${m} ${v} kg`).join(", ") : "";
   // Skip values the note already says ("25 kg ⏎ OK"), so tidied entries don't read "25 kg · 25 kg".
   const inLog = (v, unit) => v && new RegExp(`(^|[^\\d.,])${String(v).trim().replace(/[*+?^${}()|[\]\\]/g, "\\$&").replace(/[.,]/g, "[.,]")}${unit}`, "i").test(w.log || "");
@@ -825,7 +832,8 @@ function openLog(cid, di, ei, k) {
     ${e.desc ? `<div class="note pre">${nl(e.desc)}</div>` : ""}
     ${ltHtml(lt)}
     <div class="row" style="flex-wrap:wrap">${weightFields(e, w, lt, "data-fkg")}
-    <label class="f grow"><span>Reps / time done</span><input id="fRes" value="${esc(w.res || "")}" placeholder="12,10,9 or 45s"></label></div>
+    ${moves(e.name).length > 1 && !block(e, w) ? moves(e.name).map((m) => `<label class="f grow" style="min-width:40%"><span>${esc(m)} reps</span><input data-frm="${esc(m)}" inputmode="numeric" value="${esc((w.resm && w.resm[m]) || "")}" placeholder="12,10,9"></label>`).join("") : ""}
+    ${moves(e.name).length < 2 || block(e, w) || w.res ? `<label class="f grow"><span>Reps / time done</span><input id="fRes" value="${esc(w.res || "")}" placeholder="12,10,9 or 45s"></label>` : ""}</div>
     <label class="f"><span>Notes</span><textarea id="fLog">${esc(w.log || "")}</textarea></label>
     <label class="chk"><input type="checkbox" id="fDone" ${w.done || logged(w) ? "checked" : ""}> Done</label>
     <div class="acts"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="savelog" data-cid="${esc(c.id)}" data-di="${di}" data-ei="${ei}" data-k="${k}">Save</button></div>`);
@@ -833,7 +841,9 @@ function openLog(cid, di, ei, k) {
 function saveLog(cid, di, ei, k) {
   const r = getW(cid, di, ei, k); if (!r) return;
   const w = r.w;
-  $("#panel").querySelectorAll("[data-fkg]").forEach((inp) => setWeight(w, inp)); w.res = $("#fRes").value.trim(); w.log = $("#fLog").value.trim();
+  $("#panel").querySelectorAll("[data-fkg]").forEach((inp) => setWeight(w, inp)); if ($("#fRes")) w.res = $("#fRes").value.trim();
+  $("#panel").querySelectorAll("[data-frm]").forEach((inp) => { const v = inp.value.trim(); w.resm = Object.assign({}, w.resm, { [inp.dataset.frm]: v }); if (!v) delete w.resm[inp.dataset.frm]; });
+  w.log = $("#fLog").value.trim();
   w.done = $("#fDone").checked; w.at = Date.now();
   if (w.done && !w.doneAt && r.c === currentCycle()) w.doneAt = w.at;
   save(); closeSheet(); render(); if (wo) renderWo();
@@ -935,6 +945,15 @@ function setKgPh(w, lt, j, m) {
 }
 // Plain notes for this week; kg and reps are typed in the set rows.
 const notesBox = (ei, w) => `<details class="wn"${w.log ? " open" : ""}><summary>✎ Notes${w.log ? " ✓" : ""}</summary><textarea data-wf="log" data-ei="${ei}" placeholder="How did it feel?">${esc(w.log || "")}</textarea></details>`;
+// Target reps of one move: pre-fatigue "2x20; 3" → 20 for the first move; "10 + 18" → one number per move.
+function repTarget(e, w, m) {
+  const mvs = moves(e.name), i = mvs.indexOf(m);
+  const parts = String(w.sets || "").split(/[;:]/);
+  if (i === 0 && parts.length > 1 && /pre-?affaticante/i.test(e.name)) return (parts[0].match(/x\s*(\d+)/i) || parts[0].match(/(\d+)/) || [])[1] || "";
+  const r = String(w.reps || "").split("+").map((x) => x.trim());
+  const one = r.length === mvs.length ? r[i] : /pre-?affaticante/i.test(e.name) ? w.reps : r[0];
+  return (String(one || "").match(/\d+/) || [""])[0];
+}
 function woCard(c, e, ei, i, total) {
   const pos = `<div class="pos">Exercise ${i + 1} of ${total}</div>`;
   const w = e.weeks[wo.k], lt = lastTime(c, e, wo.k);
@@ -969,6 +988,24 @@ function woCard(c, e, ei, i, total) {
     ${notesBox(ei, w)}
   </section>`;
   }
+  if (cols.length > 1) {
+    // Combined exercise: kg and reps for each move, no LAST column (grey placeholders show last time).
+    const g = `style="grid-template-columns:20px repeat(${cols.length * 2},minmax(0,1fr)) 40px;gap:5px"`;
+    const ltw = lt ? lt.w : null;
+    return `<section class="wl cur" id="wl${ei}">
+    ${title}
+    <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
+    ${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
+    ${weightBoxes(e, w, lt, ei, cols)}
+    <div class="sr hd" ${g}><span></span>${cols.map((m) => `<span style="grid-column:span 2;text-align:center">EX ${mvs.indexOf(m) + 1}</span>`).join("")}<span></span></div>
+    <div class="sr hd" ${g} style="margin-top:0"><span>SET</span>${cols.map(() => "<span>KG</span><span>REPS</span>").join("")}<span></span></div>
+    ${Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" ${g}><b>${j + 1}</b>
+      ${cols.map((m) => `<input data-wf="kgset" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="decimal" value="${esc(kgList(w, m)[j] || "")}" placeholder="${esc(setKgPh(w, lt, j, m))}" aria-label="Kg ${esc(m)} set ${j + 1}"><input data-wf="repm" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="numeric" value="${esc(repList(w, m)[j] || "")}" placeholder="${esc((ltw && repList(ltw, m)[j]) || repTarget(e, w, m))}" aria-label="Reps ${esc(m)} set ${j + 1}">`).join("")}
+      <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Set ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("")}
+    ${w.res ? `<p class="muted" style="font-size:13px">Logged before: ${esc(w.res)}</p>` : ""}
+    ${notesBox(ei, w)}
+  </section>`;
+  }
   return `<section class="wl cur" id="wl${ei}">
     ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
@@ -994,6 +1031,12 @@ $("#wo").addEventListener("input", (ev) => {
     setKgList(w, m, a);
     const lt = lastTime(findCycle(wo.cid), it.e, wo.k);
     inp.closest(".wl").querySelectorAll(`[data-wf="kgset"][data-mv="${CSS.escape(inp.dataset.mv)}"]`).forEach((x) => { if (!x.value) x.placeholder = setKgPh(w, lt, +x.dataset.i, m); });
+  } else if (f === "repm") {
+    const m = inp.dataset.mv, a = repList(w, m);
+    while (a.length <= +inp.dataset.i) a.push("");
+    a[+inp.dataset.i] = inp.value.trim();
+    const v = a.join(",").replace(/,+$/, "");
+    w.resm = Object.assign({}, w.resm, { [m]: v }); if (!v) delete w.resm[m];
   } else if (f === "kg") { setWeight(w, inp); inp.style.width = (inp.value || inp.placeholder).length + 0.7 + "ch"; }
   else if (f === "rep") {
     const a = String(w.res || "").split(",").map((x) => x.trim());
@@ -1231,11 +1274,12 @@ function setLines(w, e) {
   const mv = e && !bk ? moves(e.name) : [];
   const kg = (mv.length > 1 ? mv : [null]).map((m) => [m, kgList(w, m)]);
   const reps = /^[\d\s,]+$/.test(w.res || "") ? w.res.split(",").map((x) => x.trim()) : [];
-  const n = Math.max(reps.length, ...kg.map(([, a]) => (a.some(Boolean) ? a.length : 0)));
+  const rm = mv.length > 1 && hasResm(w) ? Object.fromEntries(mv.map((m) => [m, repList(w, m)])) : null;
+  const n = Math.max(reps.length, ...kg.map(([, a]) => (a.some(Boolean) ? a.length : 0)), ...(rm ? Object.values(rm).map((a) => (a.some(Boolean) ? a.length : 0)) : []));
   if (n < 2) return "";
   return Array.from({ length: n }, (_, j) => {
     if (bk && bk.kind !== "time") return `Round ${j + 1}: ${bk.mvs[j % bk.mvs.length]}${reps[j] ? ` · ${reps[j]} reps` : ""}`;
-    const k = kg.map(([m, a]) => { const t = parseFloat(String(a[j] || "").replace(",", ".")) > 0 ? `${a[j]} kg` : "bodyweight"; return m ? `${m} ${t}` : t; }).join(" + ");
+    const k = kg.map(([m, a]) => { const t = parseFloat(String(a[j] || "").replace(",", ".")) > 0 ? `${a[j]} kg` : "bodyweight"; return (m ? `${m} ${t}` : t) + (rm && rm[m][j] ? ` × ${rm[m][j]}` : ""); }).join(" + ");
     return `Set ${j + 1}: ${[k, reps[j] && `${reps[j]} reps`].filter(Boolean).join(" · ")}`;
   }).join("\n");
 }
