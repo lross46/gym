@@ -183,6 +183,9 @@ label.f textarea{min-height:76px;resize:vertical}
 /* Workout list view */
 .wl{background:var(--surface);border-radius:20px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
 .wl.cur{outline:2px solid var(--accent);outline-offset:-2px}
+.wl.shut{cursor:pointer;opacity:.75}
+.wl.shut h3{font-size:15px}
+.wl.fin{opacity:.55}
 .wl h3{font-size:17px}
 .wl h3 .then{color:var(--accent-text)}
 .sr{display:grid;grid-template-columns:24px 1fr 50px 42px;align-items:center;gap:8px;height:48px;border-radius:12px;padding:0 4px 0 8px;margin-top:4px}
@@ -357,7 +360,7 @@ function secsOf(w) {
 const fmtSecs = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`);
 const fmtNum = (v) => (Math.round(v * 10) / 10).toString();
 function logText(w) {
-  const kgs = hasKgs(w) ? Object.entries(w.kgs).filter(([, v]) => v).map(([m, v]) => `${m} ${v} kg`).join(", ") : "";
+  const kgs = hasKgs(w) ? Object.entries(w.kgs).filter(([, v]) => v && /[1-9]/.test(v)).map(([m, v]) => `${m} ${v} kg`).join(", ") : "";
   // Skip values the note already says ("25 kg ⏎ OK"), so tidied entries don't read "25 kg · 25 kg".
   const inLog = (v, unit) => v && new RegExp(`(^|[^\\d.,])${String(v).trim().replace(/[*+?^${}()|[\]\\]/g, "\\$&").replace(/[.,]/g, "[.,]")}${unit}`, "i").test(w.log || "");
   return [kgs || (w.kg && !inLog(w.kg, "\\s*k") ? `${w.kg} kg` : ""), w.res && !inLog(w.res, "") ? w.res : "", w.log || ""].filter(Boolean).join(" · ");
@@ -712,8 +715,8 @@ function renderSettings() {
     <h3>How to use</h3>
     <details><summary><b>Train</b></summary><ol style="font-size:14px;padding-left:20px">
       <li><b>Today</b> shows this week (green days = trained) and the next session. Tap <b>Change</b> to pick another day or week.</li>
-      <li>Tap <b>Start workout</b> to see all exercises of the day as a list (warm-up at the top, stretching at the bottom).</li>
-      <li>Each set has its own row: type the kg and reps, then tap ✓ to tick it and start the rest timer. An empty kg box suggests the set before (or last time).</li>
+      <li>Tap <b>Start workout</b>: the day is a list (warm-up at the top, stretching at the bottom) with one exercise open at a time. Tap <b>Next exercise</b> to move on, or tap any exercise to jump to it.</li>
+      <li>Each set has its own row: type the kg and reps, then tap ✓ to tick it and start the rest timer. An empty kg box suggests the set before (or last time). Combined exercises have a kg box for each: Ex 1 and Ex 2.</li>
       <li>"Last time" compares like with like (1" iso with 1" iso). Reps, notes and questions are under ✎.</li>
       <li>You can also tap any exercise on Today to log it without starting a workout.</li>
     </ol></details>
@@ -859,7 +862,9 @@ function renderWo() {
     + list.map(({ e, ei }, i) => woCard(c, e, ei, i)).join("")
     + `<details class="wl"><summary><b>Stretching</b></summary><p class="pre" style="margin-top:8px">${nl(d.cooldown || "Stretch the muscles you worked.")}</p></details>`
     + '<div style="height:150px"></div>';
-  const foot = `<section class="tmr" id="timerBox" style="margin:0 0 10px"></section><div class="in"><button class="btn" data-act="wo-finish">Finish workout ✓</button></div>`;
+  const lastEx = wo.step >= list.length;
+  const foot = `<section class="tmr" id="timerBox" style="margin:0 0 10px"></section><div class="in"><button class="ib" data-act="wo-go" data-i="${wo.step - 1}" aria-label="Previous exercise" ${wo.step <= 1 ? "disabled" : ""}>‹</button>
+    ${lastEx ? '<button class="btn" data-act="wo-finish">Finish workout ✓</button>' : `<button class="btn" data-act="wo-go" data-i="${wo.step + 1}">Next exercise →</button>`}</div>`;
   $("#wo").innerHTML = `<div class="wrap">${head}${body}</div><div class="foot">${foot}</div>`;
   renderTimer();
 }
@@ -869,6 +874,7 @@ function kgCols(e, w, lt) {
   const ms = moves(e.name);
   if (ms.length < 2) return [null];
   if (exParts(e).hdr) return [];
+  if (ms.length === 2) return ms;
   const L = ms.filter((m) => LOADED_RE.test(m) || (w.kgs && w.kgs[m]) || (lt && kgOf(lt.w, m) != null));
   return L.length <= 2 ? L : [];
 }
@@ -887,15 +893,18 @@ function woCard(c, e, ei, i) {
   const ph = (String(w.reps || "").match(/^\s*(\d+)/) || [])[1] || "";
   const { hdr, ms } = exParts(e);
   const cols = kgCols(e, w, lt);
-  const first = (m) => m.split(/\s+/)[0].slice(0, 7).toUpperCase();
-  const short = (m, j) => (cols.length < 2 ? "KG" : first(cols[0]) === first(cols[1]) ? `KG ${j + 1}` : first(m));
+  const cur = i === wo.step - 1, num = cols.length > 1 ? (j) => `${j + 1}. ` : () => "", mvs = moves(e.name);
+  const title = `<h3>${hdr ? `<span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>` : ""}${ms.map((m, j) => (j ? `<span class="then"> → ${esc(num(j) + m)}</span>` : esc(num(j) + m))).join("")}</h3>`;
+  // Only the exercise in progress is open; the others show a one-line summary and open on tap.
+  if (!cur) return `<section class="wl shut${logged(w) ? " fin" : ""}" id="wl${ei}" data-act="wo-go" data-i="${i + 1}">${title}
+    <div class="muted" style="font-size:13px;margin-top:3px">${logged(w) ? "✓ " + esc(logText(w).slice(0, 90) || "done") : esc(rxText(w))}</div></section>`;
   const grid = `style="grid-template-columns:24px 1fr ${cols.map(() => "54px").join(" ")} ${listy ? "50px" : ""} 42px"`;
-  return `<section class="wl${i === wo.step - 1 ? " cur" : ""}" id="wl${ei}">
-    <h3>${hdr ? `<span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>` : ""}${ms.map((m, j) => (j ? `<span class="then"> → ${esc(m)}</span>` : esc(m))).join("")}</h3>
+  return `<section class="wl cur" id="wl${ei}">
+    ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
     ${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
     ${ms.length > 1 ? weightBoxes(e, w, lt, ei, cols) : ""}
-    <div class="sr hd" ${grid}><span>SET</span><span>LAST</span>${cols.map((m, j) => `<span>${esc(short(m, j))}</span>`).join("")}${listy ? "<span>REPS</span>" : ""}<span></span></div>
+    <div class="sr hd" ${grid}><span>SET</span><span>LAST</span>${cols.map((m) => `<span>${cols.length > 1 ? `EX ${mvs.indexOf(m) + 1}` : "KG"}</span>`).join("")}${listy ? "<span>REPS</span>" : ""}<span></span></div>
     ${Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" ${grid}><b>${j + 1}</b><span class="muted">${esc([cols.length === 1 && lt && (kgList(lt.w, cols[0])[j] || "") ? kgList(lt.w, cols[0])[j] + "kg" : "", lreps[j]].filter(Boolean).join(" × ") || "–")}</span>
       ${cols.map((m) => `<input data-wf="kgset" data-ei="${ei}" data-mv="${esc(m || "")}" data-i="${j}" inputmode="decimal" value="${esc(kgList(w, m)[j] || "")}" placeholder="${esc(setKgPh(w, lt, j, m))}" aria-label="Kg ${esc(m || "")} set ${j + 1}">`).join("")}
       ${listy ? `<input data-wf="rep" data-ei="${ei}" data-i="${j}" inputmode="numeric" value="${esc(reps[j] || "")}" placeholder="${esc(ph)}" aria-label="Reps set ${j + 1}">` : ""}
@@ -1147,6 +1156,18 @@ async function shareOrDownload(blob, name) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 const stamp = () => new Date().toISOString().slice(0, 10);
+// For the trainer: one line per set ("Set 2: Floor press 12,5 kg + Push ups · 10 reps") when weights or reps were logged per set.
+function setLines(w) {
+  const kg = Object.entries(w.kgs || {}).filter(([, v]) => /[1-9]/.test(v)).map(([m, v]) => [m, v.split("/")]);
+  if (!kg.length && w.kg) kg.push([null, String(w.kg).split("/")]);
+  const reps = /^[\d\s,]+$/.test(w.res || "") ? w.res.split(",").map((x) => x.trim()) : [];
+  const n = Math.max(reps.length, ...kg.map(([, a]) => a.length));
+  if (n < 2) return "";
+  return Array.from({ length: n }, (_, j) => {
+    const k = kg.filter(([, a]) => a[j]).map(([m, a]) => (m ? `${m} ${a[j]} kg` : `${a[j]} kg`)).join(" + ");
+    return `Set ${j + 1}: ${[k, reps[j] && `${reps[j]} reps`].filter(Boolean).join(" · ") || "–"}`;
+  }).join("\n");
+}
 async function exportExcel(only) {
   try {
     const X = await loadXLSX();
@@ -1159,7 +1180,7 @@ async function exportExcel(only) {
       r = row(); c.days.forEach((d, i) => (r[i * W] = `GIORNO "${d.id}"`)); aoa.push(r);
       r = row(); c.days.forEach((d, i) => (r[i * W] = "Riscaldamento:\n" + (d.warmup || ""))); aoa.push(r);
       r = row(); c.days.forEach((d, i) => ["ESERCIZIO", "SETTIMANA DI ALLENAMENTO", "SERIE", "RIPETIZIONI", "REC TRA LE SERIE", "NOTE"].forEach((h, k) => (r[i * W + k] = h))); aoa.push(r);
-      const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, [logText(w), w.q ? "Q: " + w.q : ""].filter(Boolean).join("\n")])));
+      const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, [setLines(w) || logText(w), setLines(w) && w.log, w.q ? "Q: " + w.q : ""].filter(Boolean).join("\n")])));
       const n = Math.max(0, ...cols.map((l) => l.length));
       for (let i = 0; i < n; i++) { r = row(); cols.forEach((l, di) => l[i] && l[i].forEach((v, k) => (r[di * W + k] = v))); aoa.push(r); }
       r = row(); c.days.forEach((d, i) => (r[i * W] = d.cooldown || "")); aoa.push(r);
@@ -1332,6 +1353,15 @@ document.addEventListener("click", (ev) => {
     case "restore": $("#fRestore").click(); break;
     case "theme": LS.set("gym.theme", D.t); applyTheme(); render(); break;
     case "wo-close": if (confirm("Leave the workout? What you've logged is saved.")) endWorkout(); break;
+    case "wo-go": {
+      const n = woExercises().list.length;
+      wo.step = Math.max(1, Math.min(n, num("i")));
+      if (!T.running || T.mode === "rest") { timerStop(true); timerDefaults(); }
+      renderWo();
+      const cur = $("#wo .wl.cur"); if (cur) $("#wo").scrollTop = Math.max(0, cur.offsetTop - 70);
+      if (dirty) scheduleSync();
+      break;
+    }
     case "wo-finish": {
       const { list } = woExercises();
       list.forEach(({ e }) => { const w = e.weeks[wo.k]; if (!w.done) markDone(w); });
@@ -1352,7 +1382,7 @@ document.addEventListener("click", (ev) => {
           if (a[i]) continue;
           while (a.length <= i) a.push("");
           a[i] = setKgPh(w, lt, i, m);
-          if (a[i]) setKgList(w, m, a);
+          if (a[i] && parseFloat(a[i]) !== 0) setKgList(w, m, a);
         }
       }
       if (wo.sets[ei] > 0) { markDone(w); save(false); }
