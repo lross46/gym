@@ -713,13 +713,21 @@ function renderSettings() {
   view(`
   <section class="card">
     <h3>How to use</h3>
-    <details><summary><b>Train</b></summary><ol style="font-size:14px;padding-left:20px">
-      <li><b>Today</b> shows this week (green days = trained) and the next session. Tap <b>Change</b> to pick another day or week.</li>
-      <li>Tap <b>Start workout</b>: the day is a list (warm-up at the top, stretching at the bottom) with one exercise open at a time. Tap <b>Next exercise</b> to move on, or tap any exercise to jump to it.</li>
-      <li>Each set has its own row: type the kg and reps, then tap ✓ to tick it and start the rest timer. An empty kg box suggests the set before (or last time). Combined exercises have a kg box for each: Ex 1 and Ex 2.</li>
+    <details><summary><b>Today</b></summary><ul style="font-size:14px;padding-left:20px">
+      <li>The week strip shows the days you actually trained (green).</li>
+      <li>The big card is your next session not yet done. Tap <b>Change</b> to pick another day or week.</li>
+      <li>Below it, tap any exercise to log it without starting a workout.</li>
+    </ul></details>
+    <details><summary><b>Workout</b></summary><ol style="font-size:14px;padding-left:20px">
+      <li>Tap <b>Start workout</b>. The header shows cycle, day and week. Warm-up is at the top, stretching at the bottom.</li>
+      <li>One exercise is open at a time. Tap <b>Next exercise →</b> (or ‹ to go back), or tap any exercise to jump to it.</li>
+      <li>Each set has a row: type <b>kg</b> and <b>reps</b>, then tap ✓. That ticks the set and starts the rest timer.</li>
+      <li>An empty kg box shows a suggestion in grey (your previous set, or last time). Tapping ✓ keeps it.</li>
+      <li>Combined exercises (pre-fatigue, supersets) have two kg boxes: <b>Ex 1</b> and <b>Ex 2</b>, matching the numbers in the title. Leave 0 or empty for bodyweight.</li>
       <li>Tabata and EMOM show one row per round with that round's move (6' of 20" on / 10" off = 12 rounds). "For time" blocks just ask for your time.</li>
-      <li>"Last time" compares like with like (1" iso with 1" iso). Reps, notes and questions are under ✎.</li>
-      <li>You can also tap any exercise on Today to log it without starting a workout.</li>
+      <li><b>LAST</b> shows what you did last time on the same variant (1" iso with 1" iso).</li>
+      <li><b>✎ Notes</b> opens notes and the "Question for trainer" box.</li>
+      <li><b>Finish workout</b> marks every exercise of the day as done. To leave without that, tap ✕ (what you typed is kept).</li>
     </ol></details>
     <details><summary><b>Timers</b></summary><ul style="font-size:14px;padding-left:20px">
       <li><b>Rest</b>: countdown between sets (set from the programme's rest time).</li>
@@ -729,15 +737,30 @@ function renderSettings() {
       <li><b>Stopwatch</b>: for "as fast as possible" workouts.</li>
       <li>The app picks the right one for each exercise; tap ⚙ to change it. It beeps 3-2-1 and at the end. Keep the volume up and the app open on screen (iPhone stops sounds when the screen locks or you switch app).</li>
     </ul></details>
+    <details><summary><b>Programme</b></summary><ul style="font-size:14px;padding-left:20px">
+      <li>Lists all your cycles. Tap one to see its days and weeks with what you logged.</li>
+      <li>On a cycle: <b>Make current</b>, <b>Train this cycle</b>, <b>Share with trainer</b>, or <b>Delete this cycle</b>.</li>
+    </ul></details>
     <details><summary><b>Import a new programme</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>In the trainer's email, tap each Word attachment (Giorno A, B, C) › Share › <b>Save to Files</b>.</li>
       <li>In the app, go to <b>Programme</b> › <b>Import programme</b> and select all three files together.</li>
       <li>Check the name (e.g. Cycle 52) and tap <b>Add cycle</b>. It becomes the current cycle.</li>
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
     </ol></details>
-    <details><summary><b>Progress</b></summary><p style="font-size:14px">Search an exercise to see charts of weight, reps or time across all cycles. Tap the chart to see each point. Old values come from your notes, so a few may be missing.</p></details>
-    <details><summary><b>Share with trainer</b></summary><p style="font-size:14px">Write questions in the "Question for trainer" box of any exercise. Then tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send it by WhatsApp or email.</p></details>
-    <details><summary><b>Backup and other devices</b></summary><p style="font-size:14px">Everything is saved on this phone and synced to your private GitHub repo when online. On a new phone or laptop, open the app and paste the same access key (or a new one). <b>Download Excel</b> gives you a spreadsheet like your old one, one tab per cycle. When the key expires, the app shows a sync problem: create a new key and paste it below.</p></details>
+    <details><summary><b>Progress</b></summary><p style="font-size:14px">Search an exercise to see charts of weight, reps or time across all cycles; filter by variant (e.g. iso). Tap the chart to see each point. Old values come from your notes, so a few may be missing.</p></details>
+    <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
+      <li>Write questions in the "Question for trainer" box of any exercise (✎ Notes).</li>
+      <li>Tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send the text by WhatsApp or email.</li>
+      <li>Or tap <b>⬇ Excel file of Cycle N</b> on the same screen: one sheet with that cycle, weights, reps, times and notes, one line per set. Your phone then lets you send it.</li>
+    </ol></details>
+    <details><summary><b>Backup and other devices</b></summary><ul style="font-size:14px;padding-left:20px">
+      <li>Everything is saved on this phone and synced to your private GitHub repo when online.</li>
+      <li>The repo also keeps <b>gym-log.xlsx</b> with every cycle, one tab each, updated after each sync.</li>
+      <li><b>Download Excel</b> (below) gives you that same all-cycles file on the phone. <b>Download backup file</b> / <b>Restore from file</b> save and load everything as one file.</li>
+      <li>On a new phone or laptop, open the app and paste the same access key (or a new one). On iPhone, the Home Screen app needs the key pasted again even if Safari has it.</li>
+      <li>When the key expires, the app shows a sync problem: create a new key and paste it below.</li>
+    </ul></details>
+    <details><summary><b>Appearance</b></summary><p style="font-size:14px">Choose light, dark or auto (follows the phone) at the bottom of this page.</p></details>
   </section>
   <section class="card">
     <h3>Sync with your private data</h3>
