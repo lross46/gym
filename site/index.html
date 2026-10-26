@@ -737,7 +737,7 @@ function renderSettings() {
       <li>Tap <b>Start workout</b>. The header shows cycle, day and week. Warm-up is at the top, stretching at the bottom.</li>
       <li>One exercise is open at a time; each says where you are (e.g. "Exercise 2 of 5"). Tap <b>Next exercise →</b> (or ‹ to go back), or tap any exercise to jump to it.</li>
       <li>Each set has a row: type <b>kg</b> and <b>reps</b>, then tap ✓. That ticks the set and starts the rest timer.</li>
-      <li>An empty kg box shows a suggestion in grey (your previous set, or last time). Tapping ✓ keeps it.</li>
+      <li>Empty boxes show a suggestion in grey: kg from your previous set (or last time), reps from the programme. Tapping ✓ keeps them; type over to change.</li>
       <li>Combined exercises (pre-fatigue, supersets) have two kg boxes: <b>Ex 1</b> and <b>Ex 2</b>, matching the numbers in the title. Leave 0 or empty for bodyweight.</li>
       <li>Tabata and EMOM show one row per round with that round's move (6' of 20" on / 10" off = 12 rounds). "For time" blocks just ask for your time.</li>
       <li><b>LAST</b> shows what you did last time on the same variant (1" iso with 1" iso).</li>
@@ -1000,7 +1000,7 @@ function woCard(c, e, ei, i, total) {
     <div class="sr hd" ${g}><span></span>${cols.map((m) => `<span style="grid-column:span 2;text-align:center">EX ${mvs.indexOf(m) + 1}</span>`).join("")}<span></span></div>
     <div class="sr hd" ${g} style="margin-top:0"><span>SET</span>${cols.map(() => "<span>KG</span><span>REPS</span>").join("")}<span></span></div>
     ${Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" ${g}><b>${j + 1}</b>
-      ${cols.map((m) => `<input data-wf="kgset" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="decimal" value="${esc(kgList(w, m)[j] || "")}" placeholder="${esc(setKgPh(w, lt, j, m))}" aria-label="Kg ${esc(m)} set ${j + 1}"><input data-wf="repm" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="numeric" value="${esc(repList(w, m)[j] || "")}" placeholder="${esc((ltw && repList(ltw, m)[j]) || repTarget(e, w, m))}" aria-label="Reps ${esc(m)} set ${j + 1}">`).join("")}
+      ${cols.map((m) => `<input data-wf="kgset" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="decimal" value="${esc(kgList(w, m)[j] || "")}" placeholder="${esc(setKgPh(w, lt, j, m))}" aria-label="Kg ${esc(m)} set ${j + 1}"><input data-wf="repm" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="numeric" value="${esc(repList(w, m)[j] || "")}" placeholder="${esc(repTarget(e, w, m) || (ltw && repList(ltw, m)[j]) || "")}" aria-label="Reps ${esc(m)} set ${j + 1}">`).join("")}
       <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Set ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("")}
     ${w.res ? `<p class="muted" style="font-size:13px">Logged before: ${esc(w.res)}</p>` : ""}
     ${notesBox(ei, w)}
@@ -1510,6 +1510,11 @@ document.addEventListener("click", (ev) => {
           a[i] = setKgPh(w, lt, i, m);
           if (a[i] && parseFloat(a[i]) !== 0) setKgList(w, m, a);
         }
+        // Reps not typed take the programme's number (Luca can still edit them).
+        const cols = bk ? [] : kgCols(item.e, w, lt);
+        const fill = (a, v) => { if (a[i] || !v) return null; while (a.length <= i) a.push(""); a[i] = v; return a.join(",").replace(/,+$/, ""); };
+        if (cols.length > 1) for (const m of cols) { const v = fill(repList(w, m), repTarget(item.e, w, m)); if (v) w.resm = Object.assign({}, w.resm, { [m]: v }); }
+        else if (!bk && (!w.res || /^[\d\s,]+$/.test(w.res))) { const v = fill(repList(w, null), (String(w.reps || "").match(/^\s*(\d+)/) || [])[1]); if (v) w.res = v; }
       }
       if (wo.sets[ei] > 0) { markDone(w); save(false); }
       wo.step = list.indexOf(item) + 1;
