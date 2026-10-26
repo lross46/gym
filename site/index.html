@@ -189,6 +189,7 @@ label.f textarea{min-height:76px;resize:vertical}
 .src{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.3}
 .wn{margin-top:8px}
 .item.old,.item.old b,.item.old small{color:var(--muted)}
+.ph{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:16px 4px 6px}.spk{flex:none;margin:0 6px}.spk polyline{fill:none;stroke:var(--accent-text);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.prow .up{color:var(--accent-text);font-size:10px}.prow .dn{color:#d9534f;font-size:10px}
 .imp{font-size:13px;padding-left:20px;margin:0 0 10px}.imp li{margin:2px 0}.imp li.two{color:var(--accent-text)}.imp li[data-act]{cursor:pointer;text-decoration:underline dotted}.imp li.one::after{content:" ✓ one move";color:var(--muted)}
 .item.old{opacity:.7}
 .wn summary{color:var(--accent-text);font-weight:750;cursor:pointer}
@@ -418,28 +419,29 @@ function setKgList(w, m, a) {
 /* ---------- exercise index and history ---------- */
 const keyOf = (n) => String(n || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
   .replace(/\bpre-?affaticante\b/g, "").replace(/\bpoi\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+// One entry per single move: combos are split into their moves, blocks (Tabata, EMOM…) left out,
+// spelling variants ("2 manuri", "2 man.") merged.
+const moveKey = (m) => keyOf(String(m).replace(/\([^)]*\)?/g, "").replace(/\*+/g, "").replace(/\bmanuri\b/gi, "manubri").replace(/\b(\d)\s*man\b\.?/gi, "$1 manubri").replace(/\ba (\d) gamba/gi, "$1 gamba").replace(/\bups\b/gi, "up").replace(/\bsquats\b/gi, "squat"));
 function getIndex() {
   if (index) return index;
-  const map = new Map();
+  const map = new Map(), ex = new Map();
   byOrder().forEach((c) => c.days.forEach((d) => d.exercises.forEach((e) => {
-    const k = keyOf(e.name);
-    if (!k) return;
-    let g = map.get(k);
-    if (!g) map.set(k, (g = { key: k, name: e.name, items: [] }));
-    g.name = e.name;
-    e.weeks.forEach((w) => g.items.push({ c, d, e, w }));
-    const ms = moves(e.name);
-    if (ms.length > 1) for (const m of ms) {
-      const km = keyOf(m);
-      if (!km || km === k) continue;
-      const ws = e.weeks.filter((w) => w.kgs && w.kgs[m]);
-      if (!ws.length) continue;
-      let gm = map.get(km);
-      if (!gm) map.set(km, (gm = { key: km, name: m, items: [] }));
-      ws.forEach((w) => gm.items.push({ c, d, e, w, mv: m }));
-    }
+    const ke = keyOf(e.name);
+    if (ke) { if (!ex.has(ke)) ex.set(ke, { items: [] }); e.weeks.forEach((w) => ex.get(ke).items.push({ c, d, e, w })); }
+    const { hdr, ms } = exParts(e);
+    if (hdr || block(e, e.weeks[0])) return;
+    const one = ms.length < 2;
+    ms.forEach((m) => {
+      const k = moveKey(m);
+      if (!k) return;
+      let g = map.get(k);
+      if (!g) map.set(k, (g = { key: k, name: m, items: [] }));
+      g.name = m.replace(/\s*\(\s*"?pre-?affaticante"?\s*\)/i, "");
+      e.weeks.forEach((w) => g.items.push(one ? { c, d, e, w } : { c, d, e, w, mv: m }));
+    });
   })));
-  for (const g of map.values()) g.items.sort((a, b) => (a.c.order ?? 0) - (b.c.order ?? 0));
+  for (const g of [...map.values(), ...ex.values()]) g.items.sort((a, b) => (a.c.order ?? 0) - (b.c.order ?? 0));
+  map.ex = ex; // whole exercises, for "last time"
   index = map;
   return map;
 }
@@ -448,8 +450,8 @@ function lastTime(c, e, k) {
   const v = variantOf(e.weeks[k] || {});
   const cands = [];
   for (let j = k - 1; j >= 0; j--) if (logged(e.weeks[j]) && logText(e.weeks[j])) cands.push({ label: `This cycle · week ${e.weeks[j].w}`, w: e.weeks[j] });
-  const g = getIndex().get(keyOf(e.name));
-  if (g) g.items.filter((it) => !it.mv && (it.c.order ?? 0) < (c.order ?? 0) && logText(it.w)).reverse()
+  const g = getIndex().ex.get(keyOf(e.name));
+  if (g) g.items.filter((it) => (it.c.order ?? 0) < (c.order ?? 0) && logText(it.w)).reverse()
     .forEach((it) => cands.push({ label: `${cName(it.c)} · week ${it.w.w}`, w: it.w }));
   const same = cands.find((x) => variantOf(x.w) === v);
   if (same || !cands.length) return same || null;
@@ -656,7 +658,8 @@ function renderCycle(c) {
 function groupStats(g) {
   const pts = { kg: [], reps: [], secs: [] };
   for (const it of g.items) {
-    const v = { kg: kgOf(it.w, it.mv), reps: it.mv ? null : repsOf(it.w), secs: it.mv ? null : secsOf(it.w) };
+    const rm = it.mv && it.w.resm && it.w.resm[it.mv] ? Math.max(...repList(it.w, it.mv).map(Number).filter((x) => x > 0)) : null;
+    const v = { kg: kgOf(it.w, it.mv), reps: it.mv ? (rm > 0 ? rm : null) : repsOf(it.w), secs: it.mv ? null : secsOf(it.w) };
     for (const m of ["kg", "reps", "secs"]) if (v[m] != null) pts[m].push({ v: v[m], it });
   }
   return pts;
@@ -666,22 +669,35 @@ function renderProgress() {
   const g = ui.prog && idx.get(ui.prog);
   if (g) return renderExercise(g);
   view(`<input class="search" id="q" type="search" placeholder="Search exercises (e.g. squat, rematore)" value="${esc(ui.q)}" autocomplete="off">
-    <p class="muted" style="font-size:13px;margin:8px 2px">Most recent first. Charts use the weights, reps and times in your notes.</p>
-    <div class="card list" id="plist"></div>`);
+    <p class="muted" style="font-size:13px;margin:8px 2px">One line per move: latest, ▲▼ against last time, best, and the recent trend.</p>
+    <div id="plist"></div>`);
   $("#q").addEventListener("input", (e) => { ui.q = e.target.value; saveUI(); progList(); });
   progList();
+}
+function spark(vals) {
+  if (vals.length < 2) return "";
+  const lo = Math.min(...vals), hi = Math.max(...vals), W = 64, H = 22, sx = W / (vals.length - 1);
+  const pts = vals.map((v, i) => `${(i * sx).toFixed(1)},${(H - 2 - (hi > lo ? ((v - lo) / (hi - lo)) * (H - 4) : (H - 4) / 2)).toFixed(1)}`).join(" ");
+  return `<svg class="spk" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><polyline points="${pts}"/></svg>`;
+}
+function progRow(g) {
+  const p = groupStats(g), m = p.kg.length ? "kg" : p.reps.length ? "reps" : p.secs.length ? "secs" : "";
+  const vals = m ? p[m].map((x) => x.v) : [];
+  const fmt = m && METRICS[m][1], last = vals.at(-1), prev = vals.at(-2);
+  const arrow = vals.length > 1 ? (last > prev ? '<span class="up">▲</span>' : last < prev ? '<span class="dn">▼</span>' : "") : "";
+  const info = m ? `${fmt(last)} ${arrow}${vals.length > 1 ? ` · best ${fmt(Math.max(...vals))}` : ""}` : "no numbers yet";
+  return `<button type="button" class="item prow" data-act="prog" data-key="${esc(g.key)}"><span class="grow"><b>${esc(g.name)}</b><small class="muted">${info}</small></span>${spark(vals.slice(-12))}<span class="chev">›</span></button>`;
 }
 function progList() {
   const q = keyOf(ui.q);
   const groups = [...getIndex().values()].filter((g) => !q || g.key.includes(q) || keyOf(toEnglish(g.name)).includes(q));
   const last = (g) => Math.max(...g.items.map((it) => it.c.order ?? 0));
-  groups.sort((a, b) => (q && (b.key === q) - (a.key === q)) || last(b) - last(a));
-  $("#plist").innerHTML = groups.slice(0, 150).map((g) => {
-    const p = groupStats(g);
-    const tags = [p.kg.length ? `${fmtNum(Math.max(...p.kg.map((x) => x.v)))} kg best` : "", p.reps.length ? "reps" : "", p.secs.length ? "time" : ""].filter(Boolean).join(" · ");
-    const cyc = new Set(g.items.map((it) => it.c.id)).size;
-    return `<button type="button" class="item" data-act="prog" data-key="${esc(g.key)}"><span class="grow"><b>${nameLines(g.name).map(esc).join(" · ")}</b><small class="muted">${cyc} cycle${cyc > 1 ? "s" : ""}${tags ? " · " + tags : ""}</small></span><span class="chev">›</span></button>`;
-  }).join("") || '<p class="muted" style="padding:8px">No exercises match.</p>';
+  groups.sort((a, b) => (q && (b.key === q) - (a.key === q)) || last(b) - last(a) || a.name.localeCompare(b.name));
+  const cur = currentCycle(), inCur = (g) => cur && g.items.some((it) => it.c === cur);
+  const now = groups.filter(inCur), rest = groups.filter((g) => !inCur(g));
+  $("#plist").innerHTML = (now.length ? `<h3 class="ph">${esc(cur.label)}</h3><div class="card list">${now.map(progRow).join("")}</div>` : "")
+    + (rest.length ? `<h3 class="ph">${now.length ? "Earlier cycles" : "Exercises"}</h3><div class="card list">${rest.slice(0, 200).map(progRow).join("")}</div>` : "")
+    || '<p class="muted" style="padding:8px">No exercises match.</p>';
 }
 // How a set was performed, from the prescription: 1" iso, eccentric, ... so charts compare like with like.
 function variantOf(w) {
@@ -702,7 +718,7 @@ function renderExercise(g) {
   const variant = variants.length > 1 && variants.includes(ui.variant) ? ui.variant : "All";
   const series = variant === "All" ? all : all.filter((p) => variantOf(p.it.w) === variant);
   const vals = series.map((p) => p.v);
-  const hist = g.items.slice().reverse();
+  const hist = g.items.filter((it) => logText(it.w) || fullLog(it.w, it.e)).reverse();
   view(`
   <button class="link" data-act="prog-back">‹ All exercises</button>
   <section class="card">
@@ -712,7 +728,7 @@ function renderExercise(g) {
     <div class="stats"><div><small class="muted">Latest</small><b>${METRICS[metric][1](vals.at(-1))}</b></div><div><small class="muted">Best</small><b>${METRICS[metric][1](Math.max(...vals))}</b></div><div><small class="muted">Entries</small><b>${vals.length}</b></div></div>
     <div class="chart" id="chart"></div>` : `<p class="muted">No weights, reps or times found in your notes for this exercise yet.</p>`}
   </section>
-  <section class="card"><h3>History</h3><div class="hist">${hist.map((it) => `<div><small>${esc(cName(it.c))} · Day ${esc(it.d.id)} · week ${esc(it.w.w)} — ${esc([it.w.sets, it.w.reps].filter(Boolean).join(" × "))}</small><p>${logText(it.w) ? esc(logText(it.w)) : '<span class="muted">—</span>'}</p></div>`).join("")}</div></section>`);
+  <section class="card"><h3>History</h3><div class="hist">${hist.map((it) => `<div><small>${esc(cName(it.c))} · Day ${esc(it.d.id)} · week ${esc(it.w.w)} — ${esc([it.w.sets, it.w.reps].filter(Boolean).join(" × "))}</small><p style="white-space:pre-line">${esc(fullLog(it.w, it.e))}</p></div>`).join("")}</div></section>`);
   if (series.length) drawChart($("#chart"), series, METRICS[metric][1], metric === "secs" ? (v) => fmtClock(v) : fmtNum);
 }
 function niceTicks(min, max, n = 4) {
@@ -799,7 +815,7 @@ function renderSettings() {
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
       <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with two-move ones in colour: if one is really a single move, tap it (tap again to undo).</li>
     </ol></details>
-    <details><summary><b>Progress</b></summary><p style="font-size:14px">Search an exercise to see charts of weight, reps or time across all cycles; filter by variant (e.g. iso). Tap the chart to see each point. Old values come from your notes, so a few may be missing.</p></details>
+    <details><summary><b>Progress</b></summary><p style="font-size:14px">One line per move (combos are split into their moves; Tabata/EMOM blocks are left out). Moves in your current cycle come first. Each line shows the latest value, ▲/▼ against last time, your best and a small trend line. Tap a move for its chart (weight, reps or time; filter by variant, e.g. iso) and the history of the weeks you logged. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>Tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send the text by WhatsApp or email.</li>
       <li>Or tap <b>⬇ Excel file of Cycle N</b> on the same screen: one sheet with that cycle, weights, reps, times and notes, one line per set. Your phone then lets you send it.</li>
