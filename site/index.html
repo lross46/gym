@@ -864,7 +864,7 @@ function renderSettings() {
       <li><b>Intervals</b>: work/rest rounds, like Tabata 20"/10".</li>
       <li><b>EMOM</b>: a beep at the start of every minute.</li>
       <li><b>Stopwatch</b>: for "as fast as possible" workouts.</li>
-      <li>The app picks the right one for each exercise; tap ⚙ to change it. It beeps 3-2-1 and at the end. Keep the volume up and the app open on screen (iPhone stops sounds when the screen locks or you switch app).</li>
+      <li>The app picks the right one for each exercise; tap ⚙ to change it. It beeps for the last 5 seconds of every timer, round and minute, then plays a different chime at zero. The stopwatch counts down 5 seconds before it starts. Keep the volume up and the app open on screen (iPhone stops sounds when the screen locks or you switch app).</li>
     </ul></details>
     <details><summary><b>Programme</b></summary><ul style="font-size:14px;padding-left:20px">
       <li>Lists all your cycles. Tap one to see its days and weeks with what you logged.</li>
@@ -1175,22 +1175,37 @@ $("#wo").addEventListener("input", (ev) => {
 
 /* ---------- timer ---------- */
 let ac = null;
+// iPhone only lets sound start from a tap, and pauses ("interrupted") the audio after a lock or app switch,
+// so every tap wakes the audio up again and plays a silent sound to unlock it.
 function audioInit() {
   try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
   try {
-    if (!ac) { const A = window.AudioContext || window.webkitAudioContext; if (A) ac = new A(); }
-    if (ac && ac.state === "suspended") ac.resume();
+    if (!ac || ac.state === "closed") { const A = window.AudioContext || window.webkitAudioContext; if (A) ac = new A(); }
+    if (ac && ac.state !== "running") {
+      ac.resume();
+      const b = ac.createBufferSource(); b.buffer = ac.createBuffer(1, 1, 22050); b.connect(ac.destination); b.start(0);
+    }
   } catch {}
 }
-function beep(freq = 880, ms = 140, vol = 0.35) {
+["touchend", "click", "keydown"].forEach((ev) => document.addEventListener(ev, audioInit, { capture: true, passive: true }));
+function tone(freq, ms, vol, at = 0, type = "sine") {
+  const t = ac.currentTime + at, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+  g.gain.setValueAtTime(vol, t + ms / 1000 * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + ms / 1000 + 0.05);
+}
+// "tick" = each of the last 5 seconds, "work"/"rest" = a new round starts, "end" = the timer reaches zero.
+function beep(kind = "tick") {
+  if (navigator.vibrate) navigator.vibrate(kind === "tick" ? 80 : 400);
   if (!ac) return;
+  if (ac.state !== "running") try { ac.resume(); } catch {}
   try {
-    const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
-    o.type = "sine"; o.frequency.value = freq;
-    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
-    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + ms / 1000 + 0.05);
+    if (kind === "tick") tone(880, 150, 0.5);
+    else if (kind === "work") tone(1320, 450, 0.55);
+    else if (kind === "rest") tone(660, 450, 0.55);
+    else [0, 0.18, 0.36].forEach((at, i) => tone([1046, 1318, 1568][i], i === 2 ? 700 : 160, 0.6, at, "triangle"));
   } catch {}
-  if (navigator.vibrate) navigator.vibrate(ms > 300 ? 400 : 80);
 }
 const T = { mode: "rest", secs: 60, work: 20, rest: 10, rounds: 8, period: 60, running: false, startAt: 0, acc: 0, iv: null, beeped: "", finished: false };
 const MODES = { rest: "Rest", count: "Timer", int: "Intervals", emom: "EMOM", sw: "Stopwatch" };
@@ -1226,10 +1241,15 @@ function segments() {
   if (T.mode === "emom") return Array.from({ length: T.rounds }, (_, i) => ({ label: `Minute ${i + 1}/${T.rounds}`, secs: T.period, kind: "work" }));
   return null;
 }
+const SW_LEAD = 5;
 const elapsed = () => T.acc + (T.running ? (Date.now() - T.startAt) / 1000 : 0);
 function timerState() {
   const segs = segments(), el = elapsed();
-  if (!segs) return { disp: fmtClock(Math.floor(el)), label: T.running ? "Running" : el ? "Paused" : "Stopwatch", frac: 0, kind: "work", done: false, segIdx: 0 };
+  if (!segs) {
+    // Stopwatch: 5-second "Get ready" countdown with beeps, then it counts up.
+    if (el > 0 && el < SW_LEAD) { const left = Math.ceil(SW_LEAD - el); return { disp: fmtClock(left), left, label: "Get ready", frac: 0, kind: "rest", done: false, segIdx: 0 }; }
+    return { disp: fmtClock(Math.floor(Math.max(0, el - SW_LEAD))), label: T.running ? "Running" : el ? "Paused" : "Stopwatch", frac: 0, kind: "work", done: false, segIdx: el ? 1 : 0, sw: true };
+  }
   let t = 0;
   const total = segs.reduce((a, s) => a + s.secs, 0);
   for (let i = 0; i < segs.length; i++) {
@@ -1244,16 +1264,20 @@ function timerState() {
 const fmtClock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 function timerTick() {
   const st = timerState();
-  if (T.running && st.left != null) {
+  if (T.running && st.sw) {
+    if (st.segIdx > T.lastSeg) beep("work");
+    T.lastSeg = st.segIdx;
+  } else if (T.running && st.left != null) {
     const key = st.segIdx + ":" + st.left;
     if (st.done) {
-      if (T.beeped !== "end") { beep(1320, 650, 0.45); T.beeped = "end"; }
+      if (T.beeped !== "end") { beep("end"); T.beeped = "end"; }
       T.running = false; T.acc = elapsed(); T.finished = true; clearInterval(T.iv); T.iv = null;
       // After a rest between timed sets, go back to the exercise's own timer.
       if (T.restore) { T.restore = false; setTimeout(() => { if (wo && !T.running) { timerStop(true); timerDefaults(); renderTimer(); } }, 1500); }
     }
-    else if (st.left <= 3 && T.beeped !== key) { beep(880, 140); T.beeped = key; }
-    else if (st.segIdx > 0 && T.lastSeg !== st.segIdx) { beep(st.kind === "work" ? 1320 : 660, 450, 0.45); }
+    // A new round gets its own beep; the last 5 seconds of every round tick, and zero gets the "end" beep.
+    else if (st.segIdx > 0 && T.lastSeg !== st.segIdx) { beep(st.kind === "work" ? "work" : "rest"); T.beeped = key; }
+    else if (st.left <= 5 && T.beeped !== key) { beep("tick"); T.beeped = key; }
     T.lastSeg = st.segIdx;
   }
   const box = $("#timerBox"); if (!box) return;
@@ -1627,7 +1651,7 @@ document.addEventListener("click", (ev) => {
     case "wo-finish": {
       const { list } = woExercises();
       list.forEach(({ e }) => { const w = e.weeks[wo.k]; if (!w.done) markDone(w); });
-      save(); endWorkout(); toast("Workout saved 💪"); break;
+      ui.sel = null; save(); endWorkout(); toast("Workout saved 💪"); break;
     }
     case "set": {
       audioInit();
