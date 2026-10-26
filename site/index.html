@@ -998,7 +998,7 @@ function woCard(c, e, ei, i, total) {
     ${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
     ${weightBoxes(e, w, lt, ei, cols)}
     <div class="sr hd" ${g}><span></span>${cols.map((m) => `<span style="grid-column:span 2;text-align:center">EX ${mvs.indexOf(m) + 1}</span>`).join("")}<span></span></div>
-    <div class="sr hd" ${g} style="margin-top:0"><span>SET</span>${cols.map(() => "<span>KG</span><span>REPS</span>").join("")}<span></span></div>
+    <div class="sr hd" ${g} style="margin-top:0"><span></span>${cols.map(() => '<span style="text-align:center">KG</span><span style="text-align:center">REPS</span>').join("")}<span></span></div>
     ${Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" ${g}><b>${j + 1}</b>
       ${cols.map((m) => `<input data-wf="kgset" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="decimal" value="${esc(kgList(w, m)[j] || "")}" placeholder="${esc(setKgPh(w, lt, j, m))}" aria-label="Kg ${esc(m)} set ${j + 1}"><input data-wf="repm" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="numeric" value="${esc(repList(w, m)[j] || "")}" placeholder="${esc(repTarget(e, w, m) || (ltw && repList(ltw, m)[j]) || "")}" aria-label="Reps ${esc(m)} set ${j + 1}">`).join("")}
       <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Set ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("")}
