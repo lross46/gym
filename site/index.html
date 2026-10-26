@@ -79,6 +79,7 @@ details>summary{list-style:none}
 .pill{display:inline-block;font-size:11px;font-weight:800;border-radius:999px;padding:3px 8px;background:var(--accent);color:var(--accent-ink);vertical-align:middle}
 .nm span{display:block}
 .nm .then{color:var(--accent-text)}
+.wo .title .tag,.nm .tag{display:inline-block;margin-bottom:8px;font-size:12px;letter-spacing:.04em}
 .mylog{margin-top:4px;font-size:13px;color:var(--accent-text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pren{margin-top:12px;font-size:14px;font-weight:650;background:var(--soft);border-radius:12px;padding:10px 12px}
 .q{margin-top:6px;font-size:14px;color:var(--warn);white-space:pre-wrap}
@@ -114,10 +115,6 @@ table.wk td{border-top:1px solid var(--line);padding:8px 6px;vertical-align:top}
 table.wk tr.tap{cursor:pointer}
 table.wk td.log{white-space:pre-wrap;color:var(--accent-text);font-weight:600}
 table.wk td.log.muted{color:var(--muted);font-weight:500}
-.vids{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.vid{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:999px;padding:8px 13px;font-size:14px;font-weight:650;background:var(--soft);color:var(--ink);text-decoration:none}
-.vid .pl{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:10px}
-.vid.pinned{outline:2px solid var(--accent);outline-offset:-2px}
 label.f{display:block;margin:10px 0}
 label.f span{display:block;font-size:13px;font-weight:650;color:var(--muted);margin-bottom:4px}
 label.f input,label.f textarea,label.f select{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
@@ -253,8 +250,8 @@ const LS = {
 const DEFAULTS = { repo: "lross46/gym-data", path: "data/gym.json", token: "" };
 const LOGF = ["log", "kg", "kgs", "res", "q", "done", "at", "doneAt"];
 let settings = Object.assign({}, DEFAULTS, LS.get("gym.settings", {}));
-let data = LS.get("gym.data", null) || { version: 1, updated: 0, current: null, cycles: [], videos: {} };
-data.videos = data.videos || {};
+let data = LS.get("gym.data", null) || { version: 1, updated: 0, current: null, cycles: [] };
+delete data.videos;
 let sha = LS.get("gym.sha", null);
 let dirty = LS.get("gym.dirty", false);
 let ui = Object.assign({ tab: "train", sel: null, cycle: null, cday: 0, prog: null, metric: null, q: "" }, LS.get("gym.ui", {}));
@@ -380,7 +377,7 @@ function setWeight(w, inp) {
   else w.kg = v;
 }
 
-/* ---------- exercise index, history, videos ---------- */
+/* ---------- exercise index and history ---------- */
 const keyOf = (n) => String(n || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
   .replace(/\bpre-?affaticante\b/g, "").replace(/\bpoi\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 function getIndex() {
@@ -421,7 +418,7 @@ function lastTime(c, e, k) {
   return Object.assign({ other: variantOf(cands[0].w) }, cands[0]);
 }
 
-// Italian -> English, so video searches find English coaching clips.
+// Italian -> English, so searching "deadlift" finds "stacchi".
 const EN = [
   [/rematore\s*(1|un)\s*manubrio/g, "one arm dumbbell row"], [/stacchi? rumen[oi]/g, "romanian deadlift"], [/stacc(o|hi)/g, "deadlift"],
   [/affondi posteriori( alternati)?/g, "reverse lunge"], [/affondi/g, "lunges"], [/squat bulgaro/g, "bulgarian split squat"],
@@ -453,19 +450,6 @@ function moves(name) {
   }
   return out.slice(0, 6);
 }
-function videoUrl(move) {
-  const pin = data.videos[keyOf(move)];
-  if (pin) return { url: pin, pinned: true };
-  const q = `${toEnglish(move)} exercise form #shorts`;
-  return { url: "https://www.youtube.com/results?search_query=" + encodeURIComponent(q) + "&sp=EgIYAQ%253D%253D", pinned: false };
-}
-function videoChips(name) {
-  return `<div class="vids">${moves(name).map((m) => {
-    const v = videoUrl(m);
-    return `<a class="vid${v.pinned ? " pinned" : ""}" href="${esc(v.url)}" target="_blank" rel="noopener">▶ ${esc(m.length > 34 ? m.slice(0, 32) + "…" : m)}</a>`;
-  }).join("")}<button type="button" class="vid" data-act="pin" data-name="${esc(name)}" aria-label="Pin a video">📌</button></div>`;
-}
-
 /* ---------- rendering ---------- */
 const view = (h) => { $("#view").innerHTML = h; };
 const TITLES = { cycles: "Programme", progress: "Progress", settings: "Settings" };
@@ -493,11 +477,11 @@ const rxChips = (w) => `<div class="chips">${rxParts(w).map((t) => `<span class=
 const HDR_RE = /^(tabata|emom|amrap|for time|triset|superset|circuito|\d+\s*'?\s*amrap|\d+\s*round)/i;
 function exParts(e) {
   const l = nameLines(e.name);
-  const hdr = l[0] && HDR_RE.test(l[0]) ? l[0].replace(/:$/, "") : "";
+  const hdr = l[0] && HDR_RE.test(l[0]) ? l[0].replace(/:$/, "") : /pre-?affaticante/i.test(e.name) ? "Preaffaticante" : "";
   const ms = moves(e.name);
   return { hdr, ms: ms.length ? ms : l };
 }
-const titleHtml = (e) => exParts(e).ms.map((m, i) => `<span class="${i ? "then" : ""}">${i ? "→ " : ""}${esc(m)}</span>`).join("");
+const titleHtml = (e) => { const { hdr } = exParts(e); return (hdr ? `<span class="tag">${esc(hdr)}</span>` : "") + exParts(e).ms.map((m, i) => `<span class="${i ? "then" : ""}">${i ? "→ " : ""}${esc(m)}</span>`).join(""); };
 const shortName = (e) => { const { hdr, ms } = exParts(e); return (hdr ? hdr + ": " : "") + ms.join(" → "); };
 
 // Days actually trained, from when sets were ticked or logged (doneAt), never from programme dates.
@@ -600,7 +584,6 @@ function renderCycle(c) {
   ${d.exercises.map((e, ei) => `<section class="card">
     <div class="nm" style="font-weight:800;font-size:17px">${titleHtml(e)}</div>
     ${e.desc ? `<p class="pre muted" style="font-size:14px">${nl(e.desc)}</p>` : ""}
-    ${videoChips(e.name)}
     <table class="wk"><thead><tr><th>Wk</th><th>Sets</th><th>Reps</th><th>Rest</th></tr></thead><tbody>
     ${e.weeks.map((w, k) => `<tr class="tap" data-act="log" data-cid="${esc(c.id)}" data-di="${di}" data-ei="${ei}" data-k="${k}"><td><b>${esc(w.w)}</b></td><td>${esc(w.sets)}</td><td>${esc(w.reps)}</td><td>${esc(w.rest)}</td></tr>
       <tr class="tap" data-act="log" data-cid="${esc(c.id)}" data-di="${di}" data-ei="${ei}" data-k="${k}"><td></td><td colspan="3" class="log ${logText(w) ? "" : "muted"}">${logText(w) ? esc(logText(w)) : "+ log"}${qHtml(w)}</td></tr>`).join("")}
@@ -664,7 +647,6 @@ function renderExercise(g) {
   <button class="link" data-act="prog-back">‹ All exercises</button>
   <section class="card">
     <div class="nm" style="font-weight:650;font-size:17px">${nameHtml(g.name)}</div>
-    ${videoChips(g.name)}
     ${avail.length ? `<div class="seg">${avail.map((m) => `<button type="button" data-act="metric" data-m="${m}" aria-pressed="${m === metric}">${METRICS[m][0]}</button>`).join("")}</div>
     ${variants.length > 1 ? `<div class="seg">${["All", ...variants].map((v) => `<button type="button" data-act="variant" data-v="${esc(v)}" aria-pressed="${v === variant}">${esc(v)}</button>`).join("")}</div>` : ""}
     <div class="stats"><div><small class="muted">Latest</small><b>${METRICS[metric][1](vals.at(-1))}</b></div><div><small class="muted">Best</small><b>${METRICS[metric][1](Math.max(...vals))}</b></div><div><small class="muted">Entries</small><b>${vals.length}</b></div></div>
@@ -742,7 +724,6 @@ function renderSettings() {
       <li>Check the name (e.g. Cycle 52) and tap <b>Add cycle</b>. It becomes the current cycle.</li>
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
     </ol></details>
-    <details><summary><b>Videos</b></summary><p style="font-size:14px">Each exercise has ▶ buttons that search YouTube for short demos. Found one you like? In YouTube tap Share › Copy link, then in the app tap 📌 <b>Pin video</b> and paste it: that exercise will always open that video.</p></details>
     <details><summary><b>Progress</b></summary><p style="font-size:14px">Search an exercise to see charts of weight, reps or time across all cycles. Tap the chart to see each point. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><p style="font-size:14px">Write questions in the "Question for trainer" box of any exercise. Then tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send it by WhatsApp or email.</p></details>
     <details><summary><b>Backup and other devices</b></summary><p style="font-size:14px">Everything is saved on this phone and synced to your private GitHub repo when online. On a new phone or laptop, open the app and paste the same access key (or a new one). <b>Download Excel</b> gives you a spreadsheet like your old one, one tab per cycle. When the key expires, the app shows a sync problem: create a new key and paste it below.</p></details>
@@ -883,14 +864,13 @@ function renderWo() {
       <div class="card"><b>${list.filter(({ e }) => logged(e.weeks[wo.k])).length} of ${list.length}</b> exercises logged.</div><section class="tmr" id="timerBox"></section>`;
     else {
       const { e, ei } = list[s - 1];
-      const w = e.weeks[wo.k], lt = lastTime(c, e, wo.k), { hdr } = exParts(e);
+      const w = e.weeks[wo.k], lt = lastTime(c, e, wo.k);
       const target = parseSets(w.sets), dn = setsDone(ei, w);
       const extra = w.res || w.log || w.q;
-      body = `${bar}${hdr ? `<span class="tag" style="margin-bottom:8px">${esc(hdr)}</span>` : ""}
+      body = `${bar}
         <div class="title">${titleHtml(e)}</div>
         ${rxChips(w)}${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
         ${e.desc ? `<div class="note pre">${nl(e.desc)}</div>` : ""}
-        ${videoChips(e.name)}
         <div class="lab">${target ? "Sets · tap each one when done" : "Tap when done"}</div>
         <div class="sets">${Array.from({ length: target || 1 }, (_, i) => `<button type="button" data-act="set" data-ei="${ei}" data-i="${i}" class="${i < dn ? "on" : i === dn ? "next" : ""}" aria-label="Set ${i + 1}">${i < dn || !target ? "✓" : i + 1}</button>`).join("")}</div>
         ${weightBoxes(e, w, lt, ei)}
@@ -1211,7 +1191,7 @@ async function restoreJSON(file) {
 
 /* ---------- sync with the private GitHub repo ---------- */
 function merge(a, b) {
-  const out = { version: 1, updated: Math.max(a.updated || 0, b.updated || 0), current: (b.updated || 0) > (a.updated || 0) ? b.current : a.current, cycles: [], videos: Object.assign({}, b.videos || {}, a.videos || {}) };
+  const out = { version: 1, updated: Math.max(a.updated || 0, b.updated || 0), current: (b.updated || 0) > (a.updated || 0) ? b.current : a.current, cycles: [] };
   const am = new Map(a.cycles.map((c) => [c.id, c])), bm = new Map(b.cycles.map((c) => [c.id, c]));
   for (const id of new Set([...am.keys(), ...bm.keys()])) {
     const x = am.get(id), y = bm.get(id);
@@ -1285,7 +1265,7 @@ async function sync() {
   try {
     for (let attempt = 0; attempt < 3; attempt++) {
       const { doc, sha: rsha } = await pullRemote();
-      if (doc && rsha !== sha) { data = merge(data, doc); data.videos = data.videos || {}; LS.set("gym.data", data); index = null; }
+      if (doc && rsha !== sha) { data = merge(data, doc); LS.set("gym.data", data); index = null; }
       sha = rsha; LS.set("gym.sha", sha);
       if (!dirty && doc) break;
       if (await pushRemote()) { dirty = false; LS.set("gym.dirty", false); break; }
@@ -1340,20 +1320,6 @@ document.addEventListener("click", (ev) => {
     case "prog-back": ui.prog = null; saveUI(); render(); break;
     case "metric": ui.metric = D.m; saveUI(); render(); break;
     case "variant": ui.variant = D.v; saveUI(); render(); break;
-    case "pin": {
-      const ms = moves(D.name);
-      openSheet(`<h3>Pin a video</h3><p class="muted" style="font-size:14px">Open a video, tap Share › Copy link, then paste it here. It will be used for this exercise in every cycle.</p>
-        ${ms.map((m, i) => `<label class="f"><span>${esc(m)}</span><input data-pin="${esc(keyOf(m))}" placeholder="https://youtube.com/shorts/…" value="${esc(data.videos[keyOf(m)] || "")}" inputmode="url"></label>`).join("")}
-        <div class="acts"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="pin-save">Save</button></div>`);
-      break;
-    }
-    case "pin-save":
-      $("#panel").querySelectorAll("[data-pin]").forEach((inp) => {
-        const v = inp.value.trim();
-        if (v && /^https?:\/\//i.test(v)) data.videos[inp.dataset.pin] = v; else delete data.videos[inp.dataset.pin];
-      });
-      save(); closeSheet(); if (wo) renderWo(); else render(); toast("Video saved");
-      break;
     case "savesettings":
       settings.token = $("#sToken").value.trim();
       settings.repo = ($("#sRepo").value.trim() || DEFAULTS.repo).replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
