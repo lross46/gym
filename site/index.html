@@ -981,7 +981,8 @@ function renderSettings() {
     </ul></details>
     <details><summary><b>Import a new programme</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>In the trainer's email, tap each Word attachment (Giorno A, B, C) › Share › <b>Save to Files</b>.</li>
-      <li>In the app, go to <b>Programme</b> › <b>Import programme</b> and select all three files together.</li>
+      <li>In the app, go to <b>Programme</b> › <b>Import programme</b> and select all three files together (tap each one, then Open). The day letter (A, B, C) is read from inside each file.</li>
+      <li>Only got one day so far? Import it alone, then import the others later: they are added to the same cycle and nothing is lost.</li>
       <li>Check the name (e.g. Cycle 52) and tap <b>Add cycle</b>. It becomes the current cycle.</li>
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
       <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with two-move ones in colour: if one is really a single move, tap it (tap again to undo).</li>
@@ -1553,6 +1554,9 @@ function importSave() {
       });
       if (!d.cooldown) d.cooldown = od.cooldown;
     });
+    // Days not in this import (files added one at a time) stay as they were.
+    existing.days.forEach((od) => { if (!c.days.some((d) => d.id === od.id)) c.days.push(od); });
+    c.days.sort((x, y) => String(x.id).localeCompare(String(y.id)));
     data.cycles = data.cycles.map((x) => (x.id === c.id ? c : x));
   } else {
     if (!c.days.some((d) => d.cooldown)) { const prev = currentCycle(); c.days.forEach((d, i) => (d.cooldown = (prev && prev.days[i] && prev.days[i].cooldown) || "")); }
