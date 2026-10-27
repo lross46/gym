@@ -326,10 +326,16 @@ function sessionDone(c, di, k) {
   const ex = c.days[di].exercises.filter((e) => e.weeks[k]);
   return ex.length > 0 && ex.every((e) => logged(e.weeks[k]));
 }
+// Next up = the session after the one trained most recently (W1 A, B, C, then W2 …);
+// a session left half done stays next up. Falls back to the first one not done.
 function nextSession(c) {
-  const n = weekCount(c);
-  for (let k = 0; k < n; k++) for (let di = 0; di < c.days.length; di++) if (!sessionDone(c, di, k)) return { cid: c.id, di, k };
-  return { cid: c.id, di: 0, k: 0 };
+  const n = weekCount(c), order = [];
+  for (let k = 0; k < n; k++) for (let di = 0; di < c.days.length; di++) order.push({ cid: c.id, di, k });
+  let last = -1, lastT = 0;
+  order.forEach((s, i) => c.days[s.di].exercises.forEach((e) => { const w = e.weeks[s.k]; if (w && w.doneAt > lastT) { lastT = w.doneAt; last = i; } }));
+  if (last >= 0 && !sessionDone(c, order[last].di, order[last].k)) return order[last];
+  for (let i = last + 1; i < order.length; i++) if (!sessionDone(c, order[i].di, order[i].k)) return order[i];
+  return order.find((s) => !sessionDone(c, s.di, s.k)) || order[0];
 }
 // Cycles brought in from the old spreadsheet, logged before the app (Cycle 51 is the first one done in the app).
 const isOld = (c) => c.source === "numbers" && c.id !== "c51";
@@ -659,7 +665,7 @@ function renderTrain() {
       <div class="row" style="justify-content:center;flex-wrap:wrap"><button class="btn" data-act="tab" data-tab="settings">Settings</button><button class="btn ghost" data-act="import">Import programme</button></div></div>`);
     return;
   }
-  if (!ui.sel || ui.sel.cid !== c.id || !c.days[ui.sel.di]) ui.sel = nextSession(c);
+  if (!ui.picked || !ui.sel || ui.sel.cid !== c.id || !c.days[ui.sel.di]) ui.sel = nextSession(c);
   const { di, k } = ui.sel;
   const day = c.days[di];
   const exs = day.exercises.map((e, ei) => ({ e, ei })).filter(({ e }) => e.weeks[k]);
@@ -924,7 +930,7 @@ function renderSettings() {
       <li>Tap the month name for the calendar. The first day of a new cycle has a small tag like <b>C52</b>.</li>
       <li>Tap a green day to see what you did, and open that workout.</li>
       <li>Only days trained in the app are on the calendar. Older cycles have no dates; find them in Programme.</li>
-      <li>The big card is your next session not yet done. Tap <b>Change</b> to pick another day or week.</li>
+      <li>The big card is your next session: the one after your last training (a half-done session stays next). Tap <b>Change</b> to pick another day or week; leaving Today or a workout puts it back to the real next one.</li>
       <li>Below it, tap any exercise to start the workout right at that exercise.</li>
     </ul></details>
     <details><summary><b>Workout</b></summary><ol style="font-size:14px;padding-left:20px">
@@ -1075,7 +1081,7 @@ function endWorkout() {
   timerStop(true);
   $("#wo").hidden = true; document.body.style.overflow = "";
   try { wakeLock && wakeLock.release(); } catch {}
-  wakeLock = null; wo = null;
+  wakeLock = null; wo = null; ui.picked = false; saveUI();
   flushSync(); render();
 }
 // Tabata and EMOM blocks: one row per round, the moves taking turns ("6'" of 20" on / 10" off = 12 rounds).
@@ -1649,7 +1655,7 @@ async function sync() {
 }
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flushSync();
-  else { if (wo) keepAwake(); if (settings.token && !syncing) sync(); if (T.running) timerTick(); }
+  else { if (wo) keepAwake(); else if (ui.tab === "train" && $("#sheet").hidden) { ui.picked = false; render(); } if (settings.token && !syncing) sync(); if (T.running) timerTick(); }
 });
 window.addEventListener("online", () => flushSync());
 
@@ -1662,9 +1668,9 @@ document.addEventListener("click", (ev) => {
   const a = el.dataset.act, D = el.dataset;
   const num = (k) => +D[k];
   switch (a) {
-    case "tab": ui.tab = D.tab; if (D.tab === "cycles") ui.cycle = null; saveUI(); render(); window.scrollTo(0, 0); break;
-    case "selday": ui.sel.di = num("i"); saveUI(); render(); openPick(); break;
-    case "selweek": ui.sel.k = num("k"); saveUI(); render(); openPick(); break;
+    case "tab": ui.tab = D.tab; ui.picked = false; if (D.tab === "cycles") ui.cycle = null; saveUI(); render(); window.scrollTo(0, 0); break;
+    case "selday": ui.picked = true; ui.sel.di = num("i"); saveUI(); render(); openPick(); break;
+    case "selweek": ui.picked = true; ui.sel.k = num("k"); saveUI(); render(); openPick(); break;
     case "start": startWorkout(); break;
     case "start-at": { startWorkout(); if (!wo) break; wo.step = num("i"); timerDefaults(); renderWo(); const cur = $("#wo .wl.cur"); if (cur) $("#wo").scrollTop = Math.max(0, cur.offsetTop - 70); break; }
     case "log": openLog(D.cid, num("di"), num("ei"), num("k")); break;
@@ -1783,7 +1789,7 @@ document.addEventListener("click", (ev) => {
     case "tday-open": {
       closeSheet();
       const c = findCycle(D.id); if (!c) break;
-      if (c === currentCycle()) { ui.sel = { cid: c.id, di: num("di"), k: num("k") }; saveUI(); render(); startWorkout(); }
+      if (c === currentCycle()) { ui.sel = { cid: c.id, di: num("di"), k: num("k") }; ui.picked = true; saveUI(); startWorkout(); }
       else { ui.tab = "cycles"; ui.cycle = c.id; ui.cday = num("di"); saveUI(); render(); window.scrollTo(0, 0); }
       break;
     }
@@ -1814,6 +1820,7 @@ let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTime
 
 /* ---------- start ---------- */
 ui.wkOff = 0;
+ui.picked = false;
 ui.sel = null; // each launch opens on the next session not yet done, not the last one browsed
 applyTheme();
 render();
