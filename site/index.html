@@ -83,6 +83,7 @@ details>summary{list-style:none}
 .wo .title .tag,.nm .tag{display:inline-block;margin-bottom:8px;font-size:12px;letter-spacing:.04em}
 .mylog{margin-top:4px;font-size:13px;color:var(--accent-text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pren{margin-top:12px;font-size:14px;font-weight:650;background:var(--soft);border-radius:12px;padding:10px 12px}
+.pres{margin-top:16px;font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--accent);text-transform:uppercase}
 .note{margin-top:12px;font-size:14px;border-left:3px solid var(--accent);padding:2px 0 2px 10px;color:var(--muted)}
 .empty{text-align:center;padding:28px 18px}
 .empty p{color:var(--muted)}
@@ -352,7 +353,7 @@ function parseTime(s) {
   return m[3] ? +m[3] : +m[1] * 60 + (m[2] ? +m[2] : 0);
 }
 const isTimeOnly = (s) => parseTime(s) != null && !/\d/.test(normQuotes(s).replace(new RegExp(TIME_RE.source, "g"), ""));
-// "2x20; 3" on a pre-fatigue exercise means 3 sets, each starting with 2x20 of the pre-fatigue move.
+// "2x20; 3" on a pre-fatigue exercise means 3 sets of the main move (the 2x20 pre-fatigue comes once, before set 1).
 function parseSets(s) {
   const parts = String(s || "").split(/[;:]/);
   const main = parts.length > 1 ? parts.at(-1) : parts[0];
@@ -361,6 +362,26 @@ function parseSets(s) {
   const n = m ? +m[1] : 0;
   return n > 0 && n <= 30 ? n : null;
 }
+// Pre-fatigue ("Preaffaticante" + sets "2x20; 3"): 2 rounds of 20 of the first move, once, before set 1,
+// then 3 sets of the main move. Sessions trained before 27 Oct 2026 were logged with the pre-fatigue
+// before every set and keep that layout (preNote + combined rows).
+const PRE_EACH_UNTIL = Date.UTC(2026, 9, 27);
+// The trainer has written the dose three ways: in the sets ("2x20; 3"), in the name with the rounds in
+// the sets ("hamstring curl (1x20)", sets "2; 4"), or only in the name ("hamstring curl 2x20", sets "3").
+// A bracketed tag in a superset ('Squat ("preaffaticante") / ss / Jump squat') is not a pre-fatigue block.
+function preOf(e, w) {
+  if (!w || !/pre-?affaticante/i.test(e.name) || /\(\s*"?pre-?affaticante"?\s*\)/i.test(e.name) || (w.doneAt && w.doneAt < PRE_EACH_UNTIL)) return null;
+  const parts = String(w.sets || "").split(/[;:]/), mv = moves(e.name);
+  if (mv.length < 2) return null;
+  const inSets = parts.length > 1 ? parts.slice(0, -1).join(";").trim() : "";
+  const nm = !/x\s*\d/i.test(inSets) && nameLines(e.name).slice(0, 2).join(" ").match(/(\d+)\s*x\s*(\d+)/i);
+  const m = inSets.match(/(\d+)\s*x\s*(\d+)/i);
+  const rounds = m ? +m[1] : /^\d+$/.test(inSets) ? +inSets : nm ? +nm[1] : 1;
+  const reps = m ? m[2] : nm ? nm[2] : "";
+  const text = m ? inSets : nm ? `${rounds}x${nm[2]}` : rounds > 1 ? `${rounds} rounds` : "1 round";
+  return { mv: mv[0], main: mv.slice(1), text, rounds: Math.min(rounds, 10), reps, n: parseSets(w.sets) || 1 };
+}
+// Old way only (see preOf).
 function preNote(e, w) {
   const parts = String(w.sets || "").split(/[;:]/);
   if (parts.length < 2 || !/pre-?affaticante/i.test(e.name)) return "";
@@ -938,7 +959,8 @@ function renderSettings() {
       <li>One exercise is open at a time; each says where you are (e.g. "Exercise 2 of 5"). Tap <b>Next exercise →</b> (or ‹ to go back), or tap any exercise to jump to it.</li>
       <li>Each set has a row: type <b>kg</b> and <b>reps</b>, then tap ✓. That ticks the set and starts the rest timer.</li>
       <li>Empty boxes show a suggestion in grey: kg from your previous set (or last time), reps from the programme. Tapping ✓ keeps them; type over to change.</li>
-      <li>Combined exercises (pre-fatigue, supersets) have two kg boxes: <b>Ex 1</b> and <b>Ex 2</b>, matching the numbers in the title. Leave 0 or empty for bodyweight.</li>
+      <li>Combined exercises (supersets) have two kg boxes: <b>Ex 1</b> and <b>Ex 2</b>, matching the numbers in the title. Leave 0 or empty for bodyweight.</li>
+      <li><b>Pre-fatigue</b> ("2x20; 3"): the card shows ① the pre-fatigue rounds (2 rows of 20), done once before set 1 with no rest after them, then ② the 3 sets of the main move. Found automatically in every imported programme. Sessions trained before 27 Oct 2026 keep the old layout (pre-fatigue before every set).</li>
       <li>Tabata and EMOM show one row per round with that round's move (6' of 20" on / 10" off = 12 rounds). "For time" blocks just ask for your time.</li>
       <li><b>LAST</b> shows what you did last time on the same variant (1" iso with 1" iso).</li>
       <li><b>✎ Notes</b> opens a free box for notes on that exercise this week. In the Excel export they go under the kg and reps.</li>
@@ -1102,7 +1124,9 @@ function block(e, w) {
   if (exParts(e).hdr) return { kind: "time", mvs, rounds: 1, plan: "Do it as fast as you can, then type your time" };
   return null;
 }
-const setCount = (e, w) => { const b = block(e, w); return b ? b.rounds : parseSets(w.sets) || 1; };
+const setCount = (e, w) => { const b = block(e, w), p = !b && preOf(e, w); return b ? b.rounds : p ? p.rounds + p.n : parseSets(w.sets) || 1; };
+// A move gets a kg box when it uses weights, or was logged with some.
+const loadedMv = (w, lt, m) => LOADED_RE.test(m) || kgList(w, m).some(Boolean) || (lt && kgOf(lt.w, m) != null);
 function setsDone(ei, w, e) {
   if (wo.sets[ei] == null) wo.sets[ei] = w.done ? (e ? setCount(e, w) : parseSets(w.sets) || 1) : 0;
   return wo.sets[ei];
@@ -1196,6 +1220,30 @@ function woCard(c, e, ei, i, total) {
     ${e.desc ? `<div class="muted" style="font-size:13px;margin-top:6px">${nl(e.desc)}</div>` : ""}
     ${skip.length < bk.mvs.length ? weightBoxes(e, w, lt, ei, skip) : ""}
     ${rows}
+    ${notesBox(ei, w)}
+  </section>`;
+  }
+  const pre = preOf(e, w);
+  if (pre) {
+    // Pre-fatigue rounds first (once), then the sets of the main move; ✓ buttons count rows across both.
+    const ltw = lt ? lt.w : null;
+    const part = (ms, rows, from, label, repPh) => {
+      const cs = ms.flatMap((m) => (loadedMv(w, lt, m) ? [[m, "kg"], [m, "rep"]] : [[m, "rep"]]));
+      const g = `style="grid-template-columns:24px repeat(${cs.length},minmax(0,1fr)) 40px;gap:6px"`;
+      return `<div class="pres">${label}</div>
+      <div class="sr hd" ${g} style="margin-top:4px"><span></span>${cs.map(([m, t]) => `<span style="text-align:center">${ms.length > 1 ? esc(m.split(" ")[0]) + " " : ""}${t === "kg" ? "KG" : "REPS"}</span>`).join("")}<span></span></div>
+      ${Array.from({ length: rows }, (_, j) => `<div class="sr${from + j < dn ? " ok" : ""}" ${g}><b>${j + 1}</b>
+        ${cs.map(([m, t]) => t === "kg"
+          ? `<input data-wf="kgset" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="decimal" value="${esc(kgList(w, m)[j] || "")}" placeholder="${esc(setKgPh(w, lt, j, m))}" aria-label="Kg ${esc(m)} ${j + 1}">`
+          : `<input data-wf="repm" data-ei="${ei}" data-mv="${esc(m)}" data-i="${j}" inputmode="numeric" value="${esc(repList(w, m)[j] || "")}" placeholder="${esc(repPh(m, j))}" aria-label="Reps ${esc(m)} ${j + 1}">`).join("")}
+        <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${from + j}" aria-label="${esc(label)} ${j + 1} done">${from + j < dn ? "✓" : ""}</button></div>`).join("")}`;
+    };
+    return `<section class="wl cur" id="wl${ei}">
+    ${title}
+    <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
+    ${part([pre.mv], pre.rounds, 0, `① Pre-fatigue · ${pre.text} · once, before set 1`, (m, j) => pre.reps || (ltw && repList(ltw, m)[j]) || "")}
+    ${part(pre.main, pre.n, pre.rounds, `② ${pre.main.join(" + ")} · ${pre.n} sets`, (m, j) => repTarget(e, w, m) || (ltw && repList(ltw, m)[j]) || "")}
+    ${srcLine(lt)}
     ${notesBox(ei, w)}
   </section>`;
   }
@@ -1526,6 +1574,8 @@ async function shareOrDownload(blob, name) {
 const stamp = () => new Date().toISOString().slice(0, 10);
 // For the trainer: one line per set ("Set 2: Floor press 12,5 kg + Push ups bodyweight · 10 reps"); 0 kg or empty = bodyweight.
 function setLines(w, e) {
+  const pre = e && !block(e, w) && preOf(e, w);
+  if (pre) return preLines(w, pre);
   const bk = e && block(e, w);
   const mv = e && !bk ? moves(e.name) : [];
   const kg = (mv.length > 1 ? mv : [null]).map((m) => [m, kgList(w, m)]);
@@ -1538,6 +1588,15 @@ function setLines(w, e) {
     const k = kg.map(([m, a]) => { const t = parseFloat(String(a[j] || "").replace(",", ".")) > 0 ? `${a[j]} kg` : "bodyweight"; return (m ? `${m} ${t}` : t) + (rm && rm[m][j] ? ` × ${rm[m][j]}` : ""); }).join(" + ");
     return `Set ${j + 1}: ${[k, reps[j] && `${reps[j]} reps`].filter(Boolean).join(" · ")}`;
   }).join("\n");
+}
+// Pre-fatigue rounds, then the main sets, as far as anything was logged.
+function preLines(w, pre) {
+  const t = (m, j) => { const k = kgList(w, m)[j], r = repList(w, m)[j]; return `${m} ${parseFloat(String(k || "").replace(",", ".")) > 0 ? `${k} kg` : "bodyweight"}${r ? ` × ${r}` : ""}`; };
+  const len = (ms) => Math.max(0, ...ms.map((m) => Math.max(kgList(w, m).filter(Boolean).length && kgList(w, m).length, repList(w, m).filter(Boolean).length && repList(w, m).length)));
+  return [
+    ...Array.from({ length: len([pre.mv]) }, (_, j) => `Pre-fatigue ${j + 1}: ${t(pre.mv, j)}`),
+    ...Array.from({ length: len(pre.main) }, (_, j) => `Set ${j + 1}: ${pre.main.map((m) => t(m, j)).join(" + ")}`),
+  ].join("\n");
 }
 async function exportExcel(only) {
   try {
@@ -1760,8 +1819,18 @@ document.addEventListener("click", (ev) => {
       const w = item.e.weeks[wo.k], target = setCount(item.e, w), bk = block(item.e, w);
       const before = setsDone(ei, w, item.e);
       wo.sets[ei] = i < before ? i : i + 1;
+      const pre = !bk && preOf(item.e, w);
+      if (pre && i >= before) {
+        // Pre-fatigue row or main set: empty boxes keep their grey suggestion.
+        const lt = lastTime(findCycle(wo.cid), item.e, wo.k), isPre = i < pre.rounds, li = isPre ? i : i - pre.rounds;
+        for (const m of isPre ? [pre.mv] : pre.main) {
+          if (loadedMv(w, lt, m)) { const a = kgList(w, m); if (!a[li]) { while (a.length <= li) a.push(""); a[li] = setKgPh(w, lt, li, m); if (a[li] && parseFloat(a[li]) !== 0) setKgList(w, m, a); } }
+          const r = repList(w, m), v = isPre ? pre.reps : repTarget(item.e, w, m);
+          if (!r[li] && v) { while (r.length <= li) r.push(""); r[li] = v; w.resm = Object.assign({}, w.resm, { [m]: r.join(",").replace(/,+$/, "") }); }
+        }
+      }
       // Ticking a set with an empty weight box keeps the suggested weight.
-      if (i >= before) {
+      else if (i >= before) {
         const lt = lastTime(findCycle(wo.cid), item.e, wo.k);
         for (const m of bk ? [] : kgCols(item.e, w, lt)) {
           const a = kgList(w, m);
@@ -1778,7 +1847,8 @@ document.addEventListener("click", (ev) => {
       }
       if (wo.sets[ei] > 0) { markDone(w); save(false); }
       wo.step = list.indexOf(item) + 1;
-      const ticked = wo.sets[ei] > before, rest = bk ? null : parseTime(w.rest);
+      // No rest after the pre-fatigue: set 1 starts straight away, already tired.
+      const ticked = wo.sets[ei] > before, rest = bk || (pre && i < pre.rounds) ? null : parseTime(w.rest);
       const y = $("#wo").scrollTop;
       if (ticked && rest) { T.restore = T.mode !== "rest" && wo.sets[ei] < target; T.mode = "rest"; T.secs = rest; timerStop(true); }
       renderWo(); $("#wo").scrollTop = y;
