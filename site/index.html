@@ -968,6 +968,7 @@ function renderSettings() {
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
       <li>Tap <b>Share with trainer</b> (bottom of Today, or on a cycle's page), pick a week or the whole cycle, and send the text by WhatsApp or email.</li>
       <li>Or tap <b>⬇ Excel file of Cycle N</b> on the same screen: one sheet with that cycle, weights, reps, times and notes, one line per set. Your phone then lets you send it.</li>
+      <li>Both show the date you trained each day (the day you ticked its first set). Cycles from before the app have no dates.</li>
     </ol></details>
     <details><summary><b>Backup and other devices</b></summary><ul style="font-size:14px;padding-left:20px">
       <li>Everything is saved on this phone and synced to your private GitHub repo when online.</li>
@@ -1404,6 +1405,15 @@ function renderTimer() {
 }
 
 /* ---------- share with trainer ---------- */
+// Date a session was trained = when its first set was ticked (sessions before the app have none).
+const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+function sessDate(c, di, k) {
+  const ts = c.days[di].exercises.map((e) => e.weeks[k] && e.weeks[k].doneAt).filter(Boolean);
+  return ts.length ? Math.min(...ts) : null;
+}
+const hasDates = (c) => c.days.some((d) => d.exercises.some((e) => e.weeks.some((w) => w.doneAt)));
+// "Trained on" cell for one day of a cycle in the Excel files.
+const trainedCell = (c, di) => { const l = Array.from({ length: weekCount(c) }, (_, k) => sessDate(c, di, k) && `Wk ${weekLabel(c, k)}: ${fmtDate(sessDate(c, di, k))}`).filter(Boolean); return l.length ? "Trained on:\n" + l.join("\n") : ""; };
 function shareText(c, k) {
   const weeks = k >= 0 ? [k] : Array.from({ length: weekCount(c) }, (_, j) => j);
   const out = [`${cName(c)}${k >= 0 ? ` · week ${weekLabel(c, k)}` : ""}`];
@@ -1418,7 +1428,9 @@ function shareText(c, k) {
         if (logText(w)) lines.push(pre + logText(w));
       }
     }
-    if (lines.length) out.push("", `Day ${d.id}`, ...lines);
+    const di = c.days.indexOf(d);
+    const dates = weeks.map((j) => sessDate(c, di, j) && (weeks.length > 1 ? `wk ${weekLabel(c, j)} ` : "") + fmtDate(sessDate(c, di, j))).filter(Boolean);
+    if (lines.length) out.push("", `Day ${d.id}${dates.length ? " · " + dates.join(", ") : ""}`, ...lines);
   }
   if (out.length === 1) out.push("", "(nothing logged yet)");
   return out.join("\n");
@@ -1537,6 +1549,7 @@ async function exportExcel(only) {
       let r = row(); r[0] = "Durata: " + (c.duration || ""); aoa.push(r);
       r = row(); r[0] = "Periodo: " + (c.period || c.when || ""); aoa.push(r);
       r = row(); c.days.forEach((d, i) => (r[i * W] = `GIORNO "${d.id}"`)); aoa.push(r);
+      if (hasDates(c)) { r = row(); c.days.forEach((d, i) => (r[i * W] = trainedCell(c, i))); aoa.push(r); }
       r = row(); c.days.forEach((d, i) => (r[i * W] = "Riscaldamento:\n" + (d.warmup || ""))); aoa.push(r);
       r = row(); c.days.forEach((d, i) => ["ESERCIZIO", "SETTIMANA DI ALLENAMENTO", "SERIE", "RIPETIZIONI", "REC TRA LE SERIE", "NOTE"].forEach((h, k) => (r[i * W + k] = h))); aoa.push(r);
       const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, (isOld(c) ? [w.log && "Old notes: " + w.log] : [setLines(w, e) || logParts(w).filter(Boolean).join(" · "), w.log]).filter(Boolean).join("\n")])));
