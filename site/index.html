@@ -16,17 +16,17 @@
 <style>
 :root{
   --bg:#F2F3F5; --surface:#FFFFFF; --ink:#111316; --muted:#646B75; --line:#E1E4E8; --soft:#ECEEF1;
-  --accent:#C6F432; --accent-ink:#111316; --accent-text:#4E7A00; --accent-soft:#EEF8D0; --done:#E4F4C0;
+  --accent:#C6F432; --accent-ink:#111316; --accent-text:#4E7A00; --accent-soft:#EEF8D0; --done:#E4F4C0; --btw:#1FA866; --btw-bg:#D6F7E4;
   --good:#3C8A00; --warn:#A35C00; --bad:#C4321F; --shadow:0 1px 2px rgba(0,0,0,.05);
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0E0F12; --surface:#1A1C21; --ink:#F2F3F5; --muted:#8B9099; --line:#262930; --soft:#24272E;
-  --accent:#C6F432; --accent-ink:#111316; --accent-text:#C6F432; --accent-soft:#2A3516; --done:#22301A;
+  --accent:#C6F432; --accent-ink:#111316; --accent-text:#C6F432; --accent-soft:#2A3516; --done:#22301A; --btw:#7DF0B0; --btw-bg:#173A2C;
   --good:#C6F432; --warn:#F0A646; --bad:#FF6B5E; --shadow:none; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0E0F12; --surface:#1A1C21; --ink:#F2F3F5; --muted:#8B9099; --line:#262930; --soft:#24272E;
-  --accent:#C6F432; --accent-ink:#111316; --accent-text:#C6F432; --accent-soft:#2A3516; --done:#22301A;
+  --accent:#C6F432; --accent-ink:#111316; --accent-text:#C6F432; --accent-soft:#2A3516; --done:#22301A; --btw:#7DF0B0; --btw-bg:#173A2C;
   --good:#C6F432; --warn:#F0A646; --bad:#FF6B5E; --shadow:none; color-scheme:dark}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
@@ -181,6 +181,13 @@ label.f textarea{min-height:76px;resize:vertical}
 .foot .ib{height:58px;min-width:58px;border-radius:18px}
 .tmr{background:var(--surface);border-radius:20px;padding:14px 16px;margin-top:14px;box-shadow:var(--shadow)}
 .tmr.run{background:var(--done)}
+.tmr.btw.run{background:var(--btw-bg)}
+.tmr.btw .tbar i{background:var(--btw)}
+.tmr.btw .phase{color:var(--btw)}
+.tmr.btw .btn{background:var(--btw)}
+.tmr .phase.ready{color:var(--warn)}
+.lastn{margin-top:10px;border-left:3px solid var(--accent-text);background:var(--soft);border-radius:10px;padding:8px 10px;font-size:14px;white-space:pre-wrap}
+.lastn b{display:block;font-size:11px;font-weight:800;color:var(--accent-text);letter-spacing:.05em;text-transform:uppercase;white-space:normal}
 .tmr .row{gap:8px}
 .tmr .phase{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .tmr .disp{font-size:40px;font-weight:850;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.05}
@@ -960,20 +967,21 @@ function renderSettings() {
       <li>Each set has a row: type <b>kg</b> and <b>reps</b>, then tap ✓. That ticks the set and starts the rest timer.</li>
       <li>Empty boxes show a suggestion in grey: kg from your previous set (or last time), reps from the programme. Tapping ✓ keeps them; type over to change.</li>
       <li>Combined exercises (supersets) have two kg boxes: <b>Ex 1</b> and <b>Ex 2</b>, matching the numbers in the title. Leave 0 or empty for bodyweight.</li>
-      <li><b>Pre-fatigue</b> ("2x20; 3"): the card shows ① the pre-fatigue rounds (2 rows of 20), done once before set 1 with no rest after them, then ② the 3 sets of the main move. Found automatically in every imported programme. Sessions trained before 27 Oct 2026 keep the old layout (pre-fatigue before every set).</li>
+      <li><b>Pre-fatigue</b> ("2x20; 3"): the card shows ① the pre-fatigue rounds (2 rows of 20), done once before set 1 with a 30-second rest after each round (the last one too), then ② the 3 sets of the main move. Found automatically in every imported programme. Sessions trained before 27 Oct 2026 keep the old layout (pre-fatigue before every set).</li>
       <li>Tabata and EMOM show one row per round with that round's move (6' of 20" on / 10" off = 12 rounds). "For time" blocks just ask for your time.</li>
       <li><b>LAST</b> shows what you did last time on the same variant (1" iso with 1" iso).</li>
       <li><b>✎ Notes</b> opens a free box for notes on that exercise this week. In the Excel export they go under the kg and reps.</li>
+      <li>Your most recent notes on the same exercise (earlier week, or the last cycle that had it) show on the card as <b>Your notes · Week N</b>, so you see what you planned to change.</li>
       <li><b>Finish workout</b> marks every exercise of the day as done. To leave without that, tap ✕ (what you typed is kept).</li>
       <li>Tapped something by mistake? <b>↺</b> (top right in the workout, or <b>Reset Day</b> at the bottom of Today) clears that day and week.</li>
     </ol></details>
     <details><summary><b>Timers</b></summary><ul style="font-size:14px;padding-left:20px">
-      <li><b>Rest</b>: countdown between sets (set from the programme's rest time).</li>
+      <li><b>Rest</b>: countdown between sets (set from the programme's rest time). After the last set of an exercise you get <b>2 minutes</b> before the next one, in a lighter (mint) green; it keeps running when you tap Next exercise. Pre-fatigue rounds get 30 seconds.</li>
       <li><b>Timer</b>: countdown for timed exercises, like a 30" plank.</li>
       <li><b>Intervals</b>: work/rest rounds, like Tabata 20"/10".</li>
       <li><b>EMOM</b>: a beep at the start of every minute.</li>
       <li><b>Stopwatch</b>: for "as fast as possible" workouts.</li>
-      <li>The app picks the right one for each exercise; tap ⚙ to change it. It beeps for the last 5 seconds of every timer, round and minute, then plays a different chime at zero. The stopwatch counts down 5 seconds before it starts. Keep the volume up and the app open on screen (iPhone stops sounds when the screen locks or you switch app).</li>
+      <li>The app picks the right one for each exercise; tap ⚙ to change it. It beeps for the last 5 seconds of every timer, round and minute, then plays a different chime at zero. Every timer you start yourself (Timer, Intervals, EMOM, Stopwatch) counts down 5 seconds with a beep each second ("Get ready") before it starts. Keep the volume up and the app open on screen (iPhone stops sounds when the screen locks or you switch app).</li>
     </ul></details>
     <details><summary><b>Programme</b></summary><ul style="font-size:14px;padding-left:20px">
       <li>Lists all your cycles. Tap one to see its days and weeks with what you logged.</li>
@@ -1180,6 +1188,14 @@ function setKgPh(w, lt, j, m) {
 // Plain notes for this week; kg and reps are typed in the set rows.
 // Tiny line under the sets saying where the grey suggestions come from.
 const srcLine = (lt) => `<div class="src">Grey numbers: kg ${lt ? `from ${esc(lt.label)}${lt.other ? ` (${esc(lt.other.toLowerCase())})` : ""}, or your set before` : "from your set before (no earlier log)"} · reps from the programme</div>`;
+// Your most recent notes on this exercise (earlier week of this cycle, else an earlier cycle), shown on the card.
+function lastNotes(c, e, k) {
+  for (let j = k - 1; j >= 0; j--) if (e.weeks[j] && (e.weeks[j].log || "").trim()) return { label: `Week ${e.weeks[j].w}`, w: e.weeks[j] };
+  const g = getIndex().ex.get(keyOf(e.name));
+  const it = g && g.items.filter((x) => (x.c.order ?? 0) < (c.order ?? 0) && (x.w.log || "").trim()).pop();
+  return it ? { label: `${cName(it.c)} · week ${it.w.w}`, w: it.w } : null;
+}
+const lastNotesBox = (c, e, k) => { const n = lastNotes(c, e, k); return n ? `<div class="lastn"><b>Your notes · ${esc(n.label)}</b>${esc(n.w.log.trim())}</div>` : ""; };
 const notesBox = (ei, w) => `<details class="wn"${w.log ? " open" : ""}><summary>✎ Notes${w.log ? " ✓" : ""}</summary><textarea data-wf="log" data-ei="${ei}" placeholder="How did it feel?">${esc(w.log || "")}</textarea></details>`;
 // Target reps of one move: pre-fatigue "2x20; 3" → 20 for the first move; "10 + 18" → one number per move.
 function repTarget(e, w, m) {
@@ -1218,6 +1234,7 @@ function woCard(c, e, ei, i, total) {
     return `<section class="wl cur" id="wl${ei}">
     ${pos}<h3><span class="tag" style="margin-bottom:6px">${esc(hdr)}</span><br>${bk.mvs.map((m, j) => `${j + 1}. ${esc(m)}`).join("<br>")}</h3>
     <div class="pren">${esc(bk.plan)}${bk.kind !== "time" ? ". The timer above Finish runs the rounds." : ""}</div>
+    ${lastNotesBox(c, e, wo.k)}
     ${e.desc ? `<div class="muted" style="font-size:13px;margin-top:6px">${nl(e.desc)}</div>` : ""}
     ${skip.length < bk.mvs.length ? weightBoxes(e, w, lt, ei, skip) : ""}
     ${rows}
@@ -1242,6 +1259,7 @@ function woCard(c, e, ei, i, total) {
     return `<section class="wl cur" id="wl${ei}">
     ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
+    ${lastNotesBox(c, e, wo.k)}
     ${part([pre.mv], pre.rounds, 0, `① Pre-fatigue · ${pre.text} · once, before set 1`, (m, j) => pre.reps || (ltw && repList(ltw, m)[j]) || "")}
     ${part(pre.main, pre.n, pre.rounds, `② ${pre.main.join(" + ")} · ${pre.n} sets`, (m, j) => repTarget(e, w, m) || (ltw && repList(ltw, m)[j]) || "")}
     ${srcLine(lt)}
@@ -1255,6 +1273,7 @@ function woCard(c, e, ei, i, total) {
     return `<section class="wl cur" id="wl${ei}">
     ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
+    ${lastNotesBox(c, e, wo.k)}
     ${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
     ${weightBoxes(e, w, lt, ei, cols)}
     <div class="sr hd" ${g}><span></span>${cols.map((m) => `<span style="grid-column:span 2;text-align:center">EX ${mvs.indexOf(m) + 1}</span>`).join("")}<span></span></div>
@@ -1270,6 +1289,7 @@ function woCard(c, e, ei, i, total) {
   return `<section class="wl cur" id="wl${ei}">
     ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
+    ${lastNotesBox(c, e, wo.k)}
     ${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
     ${ms.length > 1 ? weightBoxes(e, w, lt, ei, cols) : ""}
     <div class="sr hd" ${grid}><span>SET</span><span>LAST</span>${cols.map((m) => `<span>${cols.length > 1 ? `EX ${mvs.indexOf(m) + 1}` : "KG"}</span>`).join("")}${listy ? "<span>REPS</span>" : ""}<span></span></div>
@@ -1344,10 +1364,11 @@ function beep(kind = "tick") {
     else [0, 0.18, 0.36].forEach((at, i) => tone([1046, 1318, 1568][i], i === 2 ? 700 : 160, 0.6, at, "triangle"));
   } catch {}
 }
+const BETWEEN_SECS = 120, PRE_REST_SECS = 30;
 const T = { mode: "rest", secs: 60, work: 20, rest: 10, rounds: 8, period: 60, running: false, startAt: 0, acc: 0, iv: null, beeped: "", finished: false };
 const MODES = { rest: "Rest", count: "Timer", int: "Intervals", emom: "EMOM", sw: "Stopwatch" };
 function timerDefaults() {
-  T.finished = false; T.acc = 0; T.beeped = "";
+  T.finished = false; T.acc = 0; T.beeped = ""; T.between = false; T.label = "";
   if (!wo) return;
   const { list } = woExercises();
   const item = list[wo.step - 1];
@@ -1367,18 +1388,20 @@ function timerDefaults() {
     T.mode = "rest"; T.secs = parseTime(w.rest) || 60;
   }
 }
+const SW_LEAD = 5;
 function segments() {
-  if (T.mode === "rest") return [{ label: "Rest", secs: T.secs, kind: "rest" }];
-  if (T.mode === "count") return [{ label: "Go", secs: T.secs, kind: "work" }];
+  if (T.mode === "rest") return [{ label: T.label || "Rest", secs: T.secs, kind: "rest" }];
+  // Every timer you start yourself counts down 5 seconds ("Get ready", one beep a second) before it starts.
+  const lead = { label: "Get ready", secs: SW_LEAD, kind: "ready" };
+  if (T.mode === "count") return [lead, { label: "Go", secs: T.secs, kind: "work" }];
   if (T.mode === "int") {
-    const s = [];
+    const s = [lead];
     for (let r = 1; r <= T.rounds; r++) { s.push({ label: `Work · round ${r}/${T.rounds}`, secs: T.work, kind: "work" }); if (r < T.rounds && T.rest > 0) s.push({ label: `Rest · round ${r}/${T.rounds}`, secs: T.rest, kind: "rest" }); }
     return s;
   }
-  if (T.mode === "emom") return Array.from({ length: T.rounds }, (_, i) => ({ label: `Minute ${i + 1}/${T.rounds}`, secs: T.period, kind: "work" }));
+  if (T.mode === "emom") return [lead, ...Array.from({ length: T.rounds }, (_, i) => ({ label: `Minute ${i + 1}/${T.rounds}`, secs: T.period, kind: "work" }))];
   return null;
 }
-const SW_LEAD = 5;
 const elapsed = () => T.acc + (T.running ? (Date.now() - T.startAt) / 1000 : 0);
 function timerState() {
   const segs = segments(), el = elapsed();
@@ -1414,6 +1437,7 @@ function timerTick() {
     }
     // A new round gets its own beep; the last 5 seconds of every round tick, and zero gets the "end" beep.
     else if (st.segIdx > 0 && T.lastSeg !== st.segIdx) { beep(st.kind === "work" ? "work" : "rest"); T.beeped = key; }
+    else if (st.kind === "ready" && T.beeped !== key) { beep("tick"); T.beeped = key; }
     else if (st.left <= 5 && T.beeped !== key) { beep("tick"); T.beeped = key; }
     T.lastSeg = st.segIdx;
   }
@@ -1443,7 +1467,7 @@ function renderTimer() {
     : T.mode === "int" ? stepper("Work", "work", 5, fmtSecs) + stepper("Rest", "rest", 5, fmtSecs) + stepper("Rounds", "rounds", 1)
     : T.mode === "emom" ? stepper("Every", "period", 15, fmtSecs) + stepper("Rounds", "rounds", 1) : "";
   const cfg = `<button class="ib" data-act="t-cfg" aria-label="Timer settings" aria-pressed="${!!T.cfg}">⚙</button>`;
-  box.className = "tmr" + (timed ? " timed" : "");
+  box.className = "tmr" + (timed ? " timed" : "") + (T.between && T.mode === "rest" ? " btw" : "");
   box.innerHTML = timed
     ? `<div class="phase"></div><div class="disp">0:00</div><div class="tbar"><i></i></div>
        <div class="ctl"><button class="btn" data-act="t-start">Start</button><button class="ib" data-act="t-reset" aria-label="Reset">↺</button>${cfg}</div>`
@@ -1805,7 +1829,8 @@ document.addEventListener("click", (ev) => {
     case "wo-go": {
       const n = woExercises().list.length;
       wo.step = Math.max(1, Math.min(n, num("i")));
-      if (!T.running || T.mode === "rest") { timerStop(true); timerDefaults(); }
+      // The 2-minute rest between exercises keeps running when you move on.
+      if (!T.running || (T.mode === "rest" && !T.between)) { timerStop(true); timerDefaults(); }
       renderWo();
       const cur = $("#wo .wl.cur"); if (cur) $("#wo").scrollTop = Math.max(0, cur.offsetTop - 70);
       if (dirty) scheduleSync();
@@ -1851,10 +1876,16 @@ document.addEventListener("click", (ev) => {
       }
       if (wo.sets[ei] > 0) { markDone(w); save(false); }
       wo.step = list.indexOf(item) + 1;
-      // No rest after the pre-fatigue: set 1 starts straight away, already tired.
-      const ticked = wo.sets[ei] > before, rest = bk || (pre && i < pre.rounds) ? null : parseTime(w.rest);
+      // 30 s after every pre-fatigue round (the last one too, before set 1); 2 minutes after the last set of an exercise.
+      const ticked = wo.sets[ei] > before, isPreRow = pre && i < pre.rounds, pos = list.indexOf(item);
+      const between = ticked && wo.sets[ei] >= target && pos < list.length - 1;
+      const rest = between ? BETWEEN_SECS : isPreRow ? PRE_REST_SECS : bk ? null : parseTime(w.rest);
       const y = $("#wo").scrollTop;
-      if (ticked && rest) { T.restore = T.mode !== "rest" && wo.sets[ei] < target; T.mode = "rest"; T.secs = rest; timerStop(true); }
+      if (ticked && rest) {
+        T.restore = between || (T.mode !== "rest" && wo.sets[ei] < target); T.mode = "rest"; T.secs = rest; timerStop(true);
+        T.between = between;
+        T.label = between ? "Next exercise" : isPreRow ? `Rest · after pre-fatigue ${i + 1} of ${pre.rounds}` : "Rest";
+      }
       renderWo(); $("#wo").scrollTop = y;
       if (ticked && rest) timerStart();
       if (ticked && wo.sets[ei] >= target) toast("All sets done 💪");
