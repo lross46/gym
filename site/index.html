@@ -981,7 +981,7 @@ function renderSettings() {
       <li><b>Intervals</b>: work/rest rounds, like Tabata 20"/10".</li>
       <li><b>EMOM</b>: a beep at the start of every minute.</li>
       <li><b>Stopwatch</b>: for "as fast as possible" workouts.</li>
-      <li>The app picks the right one for each exercise; tap ⚙ to change it. It beeps for the last 5 seconds of every timer, round and minute, then plays a different chime at zero. Every timer you start yourself (Timer, Intervals, EMOM, Stopwatch) counts down 5 seconds with a beep each second ("Get ready") before it starts. Keep the volume up and the app open on screen (iPhone stops sounds when the screen locks or you switch app).</li>
+      <li>The app picks the right one for each exercise; tap ⚙ to change it. It beeps for the last 5 seconds of every timer, round and minute, then plays a different chime at zero. Every timer you start yourself (Timer, Intervals, EMOM, Stopwatch) counts down 5 seconds with a beep each second ("Get ready") before it starts. Keep the volume up and the app open on screen (iPhone stops sounds when the screen locks or you switch app). If you see "Sound paused", tap the screen once and the beeps come back.</li>
     </ul></details>
     <details><summary><b>Programme</b></summary><ul style="font-size:14px;padding-left:20px">
       <li>Lists all your cycles. Tap one to see its days and weeks with what you logged.</li>
@@ -1331,20 +1331,25 @@ $("#wo").addEventListener("input", (ev) => {
 });
 
 /* ---------- timer ---------- */
-let ac = null;
-// iPhone only lets sound start from a tap, and pauses ("interrupted") the audio after a lock or app switch,
-// so every tap wakes the audio up again and plays a silent sound to unlock it.
+let ac = null, acStale = false;
+// iPhone only lets sound start from a tap. After the screen locks, you switch app, music or a call takes over,
+// or headphones connect, its audio can come back "dead": paused, or even saying it is running while making no sound.
+// So after any of that the next tap throws the old audio away and builds a fresh one (plus a silent sound to unlock it).
 function audioInit() {
   try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
   try {
-    if (!ac || ac.state === "closed") { const A = window.AudioContext || window.webkitAudioContext; if (A) ac = new A(); }
-    if (ac && ac.state !== "running") {
-      ac.resume();
+    if (ac && (acStale || ac.state !== "running")) { try { ac.close(); } catch {} ac = null; }
+    if (!ac) { const A = window.AudioContext || window.webkitAudioContext; if (A) ac = new A(); acStale = false; }
+    if (ac) {
+      if (ac.state !== "running") ac.resume();
       const b = ac.createBufferSource(); b.buffer = ac.createBuffer(1, 1, 22050); b.connect(ac.destination); b.start(0);
     }
   } catch {}
 }
 ["touchend", "click", "keydown"].forEach((ev) => document.addEventListener(ev, audioInit, { capture: true, passive: true }));
+["pagehide", "freeze"].forEach((ev) => window.addEventListener(ev, () => { acStale = true; }));
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") acStale = true; });
+try { navigator.mediaDevices.addEventListener("devicechange", () => { acStale = true; }); } catch {}
 function tone(freq, ms, vol, at = 0, type = "sine") {
   const t = ac.currentTime + at, o = ac.createOscillator(), g = ac.createGain();
   o.type = type; o.frequency.value = freq;
@@ -1355,8 +1360,12 @@ function tone(freq, ms, vol, at = 0, type = "sine") {
 // "tick" = each of the last 5 seconds, "work"/"rest" = a new round starts, "end" = the timer reaches zero.
 function beep(kind = "tick") {
   if (navigator.vibrate) navigator.vibrate(kind === "tick" ? 80 : 400);
-  if (!ac) return;
-  if (ac.state !== "running") try { ac.resume(); } catch {}
+  if (!ac || acStale || ac.state !== "running") {
+    // Sound can only be fully restarted by a tap, so say so once instead of staying silent (and still try).
+    if (!T.muteWarned) { T.muteWarned = true; toast("🔇 Sound paused by the phone: tap the screen once to turn beeps back on", 4000); }
+    if (!ac) return;
+    try { ac.resume(); } catch {}
+  } else T.muteWarned = false;
   try {
     if (kind === "tick") tone(880, 150, 0.5);
     else if (kind === "work") tone(1320, 450, 0.55);
