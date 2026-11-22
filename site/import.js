@@ -165,6 +165,7 @@
       });
       const m = Object.assign({}, e, { weeks: Array.from(ws, (w) => w || null) });
       if (oe && oe.one && e.one == null) m.one = true;
+      if (oe && oe.joins && e.joins == null && !m.one) m.joins = oe.joins;
       if (oe && !m.desc && oe.desc) m.desc = oe.desc;
       if (oe) used.set(oi, m);
       return m;
