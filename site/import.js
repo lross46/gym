@@ -134,6 +134,64 @@
     };
   }
 
+  // Merge a newly imported day into the same day of an existing cycle, week by week.
+  // weeks[k] is week k+1 (by the file's week number), so a file holding only week 2
+  // adds week 2 and leaves week 1, and what was logged on it, as it was. A week that is
+  // in both keeps what was logged on it. An exercise that only starts in a later week has
+  // empty (null) earlier weeks; one dropped from the new weeks keeps its other weeks.
+  function mergeDay(od, d, keyOf, LOGF) {
+    const slotOf = (w, k) => (typeof w.w === "number" && w.w > 0 ? w.w - 1 : k);
+    const slots = (e) => { const s = []; e.weeks.forEach((w, k) => { if (w) s[slotOf(w, k)] = w; }); return s; };
+    const fresh = new Set();
+    d.exercises.forEach((e) => e.weeks.forEach((w, k) => { if (w) fresh.add(slotOf(w, k)); }));
+    // Same name first; then, if both files have the same number of exercises, an unmatched
+    // exercise is paired with the unmatched one in the same position (a renamed move).
+    const pair = new Map(), taken = new Set();
+    d.exercises.forEach((e, ei) => {
+      const oi = od.exercises.findIndex((x, i) => !taken.has(i) && keyOf(x.name) === keyOf(e.name));
+      if (oi >= 0) { pair.set(ei, oi); taken.add(oi); }
+    });
+    if (od.exercises.length === d.exercises.length)
+      d.exercises.forEach((e, ei) => { if (!pair.has(ei) && !taken.has(ei)) { pair.set(ei, ei); taken.add(ei); } });
+    const used = new Map();
+    const out = d.exercises.map((e, ei) => {
+      const oi = pair.has(ei) ? pair.get(ei) : -1;
+      const oe = oi >= 0 ? od.exercises[oi] : null;
+      const ws = oe ? slots(oe) : [];
+      slots(e).forEach((w, s) => {
+        const ow = ws[s];
+        if (ow) LOGF.forEach((f) => { if (ow[f] != null && ow[f] !== "") w[f] = ow[f]; });
+        ws[s] = w;
+      });
+      const m = Object.assign({}, e, { weeks: Array.from(ws, (w) => w || null) });
+      if (oe && oe.one && e.one == null) m.one = true;
+      if (oe && !m.desc && oe.desc) m.desc = oe.desc;
+      if (oe) used.set(oi, m);
+      return m;
+    });
+    // Exercises from the older import that aren't in the new file keep the weeks it doesn't cover.
+    od.exercises.forEach((oe, oi) => {
+      if (used.has(oi)) return;
+      const ws = slots(oe);
+      fresh.forEach((s) => { delete ws[s]; });
+      if (!ws.some(Boolean)) return;
+      const m = Object.assign({}, oe, { weeks: Array.from(ws, (w) => w || null) });
+      while (m.weeks.length && !m.weeks[m.weeks.length - 1]) m.weeks.pop();
+      let j = oi - 1;
+      while (j >= 0 && !used.has(j)) j--;
+      out.splice(j >= 0 ? out.indexOf(used.get(j)) + 1 : 0, 0, m);
+      used.set(oi, m);
+    });
+    return out;
+  }
+
+  // Week numbers found in an imported cycle, e.g. [2].
+  function weeksIn(c) {
+    const s = new Set();
+    c.days.forEach((d) => d.exercises.forEach((e) => e.weeks.forEach((w) => { if (w && w.w !== "" && w.w != null) s.add(w.w); })));
+    return [...s].sort((a, b) => (a > b ? 1 : -1));
+  }
+
   async function importFiles(CFB, files) {
     const days = [];
     for (const f of files) {
@@ -145,7 +203,7 @@
     return buildCycle(days);
   }
 
-  const api = { docText, docxText, parseDay, buildCycle, importFiles };
+  const api = { docText, docxText, parseDay, buildCycle, mergeDay, weeksIn, importFiles };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.GymImport = api;
 })(typeof window !== "undefined" ? window : this);

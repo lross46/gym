@@ -435,7 +435,7 @@ const fmtNum = (v) => (Math.round(v * 10) / 10).toString();
 // Weeks of the (old) spreadsheet cycles show only the original note; the numbers taken from it stay for charts and suggestions.
 let oldWeeks = null, oldFor = null;
 function isOldW(w) {
-  if (oldFor !== data) { oldFor = data; oldWeeks = new WeakSet(); data.cycles.filter(isOld).forEach((c) => c.days.forEach((d) => d.exercises.forEach((e) => e.weeks.forEach((x) => oldWeeks.add(x))))); }
+  if (oldFor !== data) { oldFor = data; oldWeeks = new WeakSet(); data.cycles.filter(isOld).forEach((c) => c.days.forEach((d) => d.exercises.forEach((e) => e.weeks.forEach((x) => x && oldWeeks.add(x))))); }
   return oldWeeks.has(w);
 }
 // Readable log for a cycle page: one line per set, then the note.
@@ -487,9 +487,9 @@ function getIndex() {
   const map = new Map(), ex = new Map();
   byOrder().forEach((c) => c.days.forEach((d) => d.exercises.forEach((e) => {
     const ke = keyOf(e.name);
-    if (ke) { if (!ex.has(ke)) ex.set(ke, { items: [] }); e.weeks.forEach((w) => ex.get(ke).items.push({ c, d, e, w })); }
+    if (ke) { if (!ex.has(ke)) ex.set(ke, { items: [] }); e.weeks.forEach((w) => w && ex.get(ke).items.push({ c, d, e, w })); }
     const { hdr, ms } = exParts(e);
-    if (hdr || block(e, e.weeks[0])) return;
+    if (hdr || block(e, e.weeks.find(Boolean))) return;
     const one = ms.length < 2;
     ms.forEach((m) => {
       const k = moveKey(m);
@@ -497,7 +497,7 @@ function getIndex() {
       let g = map.get(k);
       if (!g) map.set(k, (g = { key: k, name: m, items: [] }));
       g.name = m.replace(/\s*\(\s*"?pre-?affaticante"?\s*\)/i, "");
-      e.weeks.forEach((w) => g.items.push(one ? { c, d, e, w } : { c, d, e, w, mv: m }));
+      e.weeks.forEach((w) => w && g.items.push(one ? { c, d, e, w } : { c, d, e, w, mv: m }));
     });
   })));
   for (const g of [...map.values(), ...ex.values()]) g.items.sort((a, b) => (a.c.order ?? 0) - (b.c.order ?? 0));
@@ -614,7 +614,7 @@ const monday = (t) => { const d = dayStart(t); d.setDate(d.getDate() - ((d.getDa
 function trainedDays() {
   const m = new Map();
   for (const c of live()) c.days.forEach((d, di) => d.exercises.forEach((e) => e.weeks.forEach((w, k) => {
-    if (!w.doneAt) return;
+    if (!w || !w.doneAt) return;
     const key = dkey(w.doneAt);
     if (!m.has(key)) m.set(key, []);
     const list = m.get(key);
@@ -738,7 +738,7 @@ function renderCycles() {
   <div class="row" style="margin:4px 0 12px"><button class="btn grow" data-act="import">⬆ Import programme</button></div>
   <p class="muted" style="margin:-4px 0 12px;font-size:13px">Save the trainer's Word files (Giorno A, B, C) from the email to Files, then pick them all at once.</p>
   <div class="card list">${cs.map((x) => {
-    const all = x.days.flatMap((d) => d.exercises.flatMap((e) => e.weeks));
+    const all = x.days.flatMap((d) => d.exercises.flatMap((e) => e.weeks.filter(Boolean)));
     const n = all.filter(logged).length;
     return `<button type="button" class="item${isOld(x) ? " old" : ""}" data-act="cycle" data-id="${esc(x.id)}"><span class="grow"><b>${esc(cName(x))} ${x === cur ? '<span class="pill">Current</span>' : ""}</b><small class="muted">${esc([x.when, x.duration].filter(Boolean).join(" · "))}${all.length ? ` · ${n}/${all.length} logged` : ""}</small></span><span class="chev">›</span></button>`;
   }).join("") || '<p class="muted">No cycles yet.</p>'}</div>`);
@@ -765,7 +765,7 @@ function renderCycle(c) {
     <div class="nm" style="font-weight:800;font-size:17px">${titleHtml(e)}</div>
     ${e.desc ? `<p class="pre muted" style="font-size:14px">${nl(e.desc)}</p>` : ""}
     <table class="wk"><thead><tr><th>Wk</th><th>Sets</th><th>Reps</th><th>Rest</th></tr></thead><tbody>
-    ${e.weeks.map((w, k) => `<tr class="tap" data-act="log" data-cid="${esc(c.id)}" data-di="${di}" data-ei="${ei}" data-k="${k}"><td><b>${esc(w.w)}</b></td><td>${esc(w.sets)}</td><td>${esc(w.reps)}</td><td>${esc(w.rest)}</td></tr>
+    ${e.weeks.map((w, k) => !w ? "" : `<tr class="tap" data-act="log" data-cid="${esc(c.id)}" data-di="${di}" data-ei="${ei}" data-k="${k}"><td><b>${esc(w.w)}</b></td><td>${esc(w.sets)}</td><td>${esc(w.reps)}</td><td>${esc(w.rest)}</td></tr>
       <tr class="tap" data-act="log" data-cid="${esc(c.id)}" data-di="${di}" data-ei="${ei}" data-k="${k}"><td></td><td colspan="3" class="log ${logText(w) ? "" : "muted"}">${logText(w) ? nl(fullLog(w, e)) : "+ log"}</td></tr>`).join("")}
     </tbody></table></section>`).join("")}
   ${d.cooldown ? `<details class="card"><summary>Stretching</summary><p class="pre">${nl(d.cooldown)}</p></details>` : ""}
@@ -1493,7 +1493,7 @@ function sessDate(c, di, k) {
   const ts = c.days[di].exercises.map((e) => e.weeks[k] && e.weeks[k].doneAt).filter(Boolean);
   return ts.length ? Math.min(...ts) : null;
 }
-const hasDates = (c) => c.days.some((d) => d.exercises.some((e) => e.weeks.some((w) => w.doneAt)));
+const hasDates = (c) => c.days.some((d) => d.exercises.some((e) => e.weeks.some((w) => w && w.doneAt)));
 // "Trained on" cell for one day of a cycle in the Excel files.
 const trainedCell = (c, di) => { const l = Array.from({ length: weekCount(c) }, (_, k) => sessDate(c, di, k) && `Wk ${weekLabel(c, k)}: ${fmtDate(sessDate(c, di, k))}`).filter(Boolean); return l.length ? "Trained on:\n" + l.join("\n") : ""; };
 function shareText(c, k) {
@@ -1552,7 +1552,7 @@ function showImport() {
       <p class="muted" style="font-size:14px">${esc(c.duration)}</p>
       <p class="muted" style="font-size:13px">Check how each exercise was read. Two-move exercises are in colour. If one is really a single move, tap it; tap again to undo.</p>
       ${c.days.map((d) => `<p><b>Day ${esc(d.id)}</b> · ${d.exercises.length} exercises</p><ul class="imp">${d.exercises.map((e) => { const { hdr, ms } = exParts(e); const di = c.days.indexOf(d), ei = d.exercises.indexOf(e); return `<li${!hdr && ms.length > 1 ? ' class="two"' : e.one ? ' class="one"' : ""}${!hdr && (ms.length > 1 || e.one) ? ` data-act="one" data-d="${di}" data-e="${ei}"` : ""}>${hdr ? `<b>${esc(hdr)}</b>: ` : ""}${ms.length > 1 ? ms.map((m, i) => `${i + 1}. ${esc(m)}`).join(" + ") : esc(ms[0] || "")}</li>`; }).join("")}</ul>`).join("")}
-      ${existing ? `<p style="font-size:14px">${esc(existing.label)} already exists. Saving replaces its programme and keeps anything you've logged in it.</p>` : ""}
+      ${existing ? `<p style="font-size:14px">${esc(existing.label)} already exists. Saving ${(() => { const wk = GymImport.weeksIn(c); return wk.length ? `adds or updates week${wk.length > 1 ? "s" : ""} ${esc(wk.join(", "))}` : "updates it"; })()} and keeps its other weeks and anything you've logged.</p>` : ""}
       <div class="acts"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="import-save">${existing ? "Replace" : "Add cycle"}</button></div>`);
 }
 async function onImport(files) {
@@ -1580,11 +1580,9 @@ function importSave() {
     c.order = existing.order;
     c.days.forEach((d) => {
       const od = existing.days.find((x) => x.id === d.id); if (!od) return;
-      d.exercises.forEach((e, ei) => {
-        const oe = od.exercises.find((x) => keyOf(x.name) === keyOf(e.name)) || od.exercises[ei];
-        if (oe && oe.one && e.one == null) e.one = true;
-        if (oe) e.weeks.forEach((w, k) => { const ow = oe.weeks[k]; if (ow) LOGF.forEach((f) => { if (ow[f] != null && ow[f] !== "") w[f] = ow[f]; }); });
-      });
+      // Weeks not in this import (weekly files) stay as they were, with their logs.
+      d.exercises = GymImport.mergeDay(od, d, keyOf, LOGF);
+      if (!d.warmup) d.warmup = od.warmup;
       if (!d.cooldown) d.cooldown = od.cooldown;
     });
     // Days not in this import (files added one at a time) stay as they were.
@@ -1648,7 +1646,7 @@ async function exportExcel(only) {
       if (hasDates(c)) { r = row(); c.days.forEach((d, i) => (r[i * W] = trainedCell(c, i))); aoa.push(r); }
       r = row(); c.days.forEach((d, i) => (r[i * W] = "Riscaldamento:\n" + (d.warmup || ""))); aoa.push(r);
       r = row(); c.days.forEach((d, i) => ["ESERCIZIO", "SETTIMANA DI ALLENAMENTO", "SERIE", "RIPETIZIONI", "REC TRA LE SERIE", "NOTE"].forEach((h, k) => (r[i * W + k] = h))); aoa.push(r);
-      const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, (isOld(c) ? [w.log && "Old notes: " + w.log] : [setLines(w, e) || logParts(w).filter(Boolean).join(" · "), w.log]).filter(Boolean).join("\n")])));
+      const cols = c.days.map((d) => d.exercises.flatMap((e) => e.weeks.filter(Boolean).map((w, k) => [k ? "" : nameLines(e.name).join("\n") + (e.desc ? "\n\n" + e.desc : ""), w.w, w.sets, w.reps, w.rest, (isOld(c) ? [w.log && "Old notes: " + w.log] : [setLines(w, e) || logParts(w).filter(Boolean).join(" · "), w.log]).filter(Boolean).join("\n")])));
       const n = Math.max(0, ...cols.map((l) => l.length));
       for (let i = 0; i < n; i++) { r = row(); cols.forEach((l, di) => l[i] && l[i].forEach((v, k) => (r[di * W + k] = v))); aoa.push(r); }
       r = row(); c.days.forEach((d, i) => (r[i * W] = d.cooldown || "")); aoa.push(r);
@@ -1682,6 +1680,7 @@ function merge(a, b) {
     const newer = (y.at || 0) > (x.at || 0) ? y : x, older = newer === x ? y : x;
     const c = JSON.parse(JSON.stringify(newer));
     if (!c.deleted) c.days.forEach((d, di) => d.exercises.forEach((e, ei) => e.weeks.forEach((w, k) => {
+      if (!w) return;
       const ow = older.days[di] && older.days[di].exercises[ei] && older.days[di].exercises[ei].weeks[k];
       if (ow && (ow.at || 0) > (w.at || 0)) LOGF.forEach((f) => { w[f] = ow[f]; });
     })));
