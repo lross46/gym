@@ -1270,6 +1270,7 @@ function woCard(c, e, ei, i, total) {
     ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
     ${lastNotesBox(c, e, wo.k)}
+    ${e.desc ? `<div class="muted" style="font-size:13px;margin-top:6px">${nl(e.desc)}</div>` : ""}
     ${part([pre.mv], pre.rounds, 0, `① Pre-fatigue · ${pre.text} · once, before set 1`, (m, j) => pre.reps || (ltw && repList(ltw, m)[j]) || "")}
     ${part(pre.main, pre.n, pre.rounds, `② ${pre.main.join(" + ")} · ${pre.n} sets`, (m, j) => repTarget(e, w, m) || (ltw && repList(ltw, m)[j]) || "")}
     ${srcLine(lt)}
@@ -1284,6 +1285,7 @@ function woCard(c, e, ei, i, total) {
     ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
     ${lastNotesBox(c, e, wo.k)}
+    ${e.desc ? `<div class="muted" style="font-size:13px;margin-top:6px">${nl(e.desc)}</div>` : ""}
     ${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
     ${weightBoxes(e, w, lt, ei, cols)}
     <div class="sr hd" ${g}><span></span>${cols.map((m) => `<span style="grid-column:span 2;text-align:center">EX ${mvs.indexOf(m) + 1}</span>`).join("")}<span></span></div>
@@ -1300,6 +1302,7 @@ function woCard(c, e, ei, i, total) {
     ${title}
     <div class="muted" style="font-size:13px;margin-top:3px">${esc(rxText(w))}</div>
     ${lastNotesBox(c, e, wo.k)}
+    ${e.desc ? `<div class="muted" style="font-size:13px;margin-top:6px">${nl(e.desc)}</div>` : ""}
     ${preNote(e, w) ? `<div class="pren">${esc(preNote(e, w))}</div>` : ""}
     ${ms.length > 1 ? weightBoxes(e, w, lt, ei, cols) : ""}
     <div class="sr hd" ${grid}><span>SET</span><span>LAST</span>${cols.map((m) => `<span>${cols.length > 1 ? `EX ${mvs.indexOf(m) + 1}` : "KG"}</span>`).join("")}${listy ? "<span>REPS</span>" : ""}<span></span></div>
