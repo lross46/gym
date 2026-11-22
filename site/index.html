@@ -1560,13 +1560,17 @@ function showImport() {
       <label class="f"><span>Name</span><input id="iLabel" value="${esc(c.label)}"></label>
       <label class="f"><span>When</span><input id="iWhen" value="${esc(c.when)}"></label>
       <p class="muted" style="font-size:14px">${esc(c.duration)}</p>
-      <p class="muted" style="font-size:13px">Check how each exercise was read. Exercises with more than one move are in colour. Wrong count? Tap a + to join the moves either side of it into one; tap a · to split them again.</p>
+      <p class="muted" style="font-size:13px">Check how each exercise was read; the trainer's notes are in grey under each one. Exercises with more than one move are in colour. Wrong count? Tap a + to join the moves either side of it into one; tap a · to split them again.</p>
       ${c.days.map((d, di) => `<p><b>Day ${esc(d.id)}</b> · ${d.exercises.length} exercises</p><ul class="imp">${d.exercises.map((e, ei) => impLine(e, di, ei)).join("")}</ul>`).join("")}
       ${existing ? `<p style="font-size:14px">${esc(existing.label)} already exists. Saving ${(() => { const wk = GymImport.weeksIn(c); return wk.length ? `adds or updates week${wk.length > 1 ? "s" : ""} ${esc(wk.join(", "))}` : "updates it"; })()} and keeps its other weeks and anything you've logged.</p>` : ""}
       <div class="acts"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="import-save">${existing ? "Replace" : "Add cycle"}</button></div>`);
 }
 // One line of the import check: read moves with a tappable + (separate) or · (joined) between them.
 function impLine(e, di, ei) {
+  const li = impMoves(e, di, ei);
+  return e.desc ? li.replace(/<\/li>$/, `<div class="muted pre" style="font-size:12px;margin:2px 0 4px">${nl(e.desc)}</div></li>`) : li;
+}
+function impMoves(e, di, ei) {
   const { hdr } = exParts(e);
   const raw = hdr ? [] : rawMoves(e.name);
   if (raw.length < 2) return `<li>${hdr ? `<b>${esc(hdr)}</b>: ` : ""}${esc(exParts(e).ms.join(" + "))}</li>`;
