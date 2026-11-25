@@ -218,7 +218,7 @@ label.f textarea{min-height:76px;resize:vertical}
 .item.old,.item.old b,.item.old small{color:var(--muted)}
 .pgrp{margin:0 0 10px}.pgrp>summary{list-style:none;display:flex;justify-content:space-between;align-items:baseline;padding:14px 16px;background:var(--surface);border-radius:16px;cursor:pointer;box-shadow:var(--shadow)}.pgrp>summary::-webkit-details-marker{display:none}.pgrp>summary::after{content:"›";color:var(--muted);margin-left:8px;transition:transform .2s}.pgrp[open]>summary::after{transform:rotate(90deg)}.pgrp>summary small{margin-left:auto}.pgrp .card{margin-top:6px}.nowdot{color:var(--accent-text);font-size:10px;vertical-align:middle}
 .ph{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:16px 4px 6px}.spk{flex:none;margin:0 6px}.spk polyline{fill:none;stroke:var(--accent-text);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.prow .up{color:var(--accent-text);font-size:10px}.prow .dn{color:#d9534f;font-size:10px}
-.imp{font-size:13px;padding-left:20px;margin:0 0 10px}.imp li{margin:2px 0}.imp li.two{color:var(--accent-text)}.imp li[data-act]{cursor:pointer;text-decoration:underline dotted}.imp .jn{font:inherit;font-weight:700;border:1px solid currentColor;border-radius:6px;background:none;color:inherit;margin:0 5px;padding:0 7px;cursor:pointer}.imp .jn.on{color:var(--muted);border-style:dashed}
+.imp{font-size:13px;padding-left:20px;margin:0 0 10px}.imp li{margin:2px 0}.imp li.two{color:var(--accent-text)}.imp li[data-act]{cursor:pointer;text-decoration:underline dotted}.imp .jn{font:inherit;font-weight:700;border:1px solid currentColor;border-radius:6px;background:none;color:inherit;margin:0 5px;padding:0 7px;cursor:pointer}.imp .jn.on{color:var(--muted);border-style:dashed}.imp .jn.sc{border-color:transparent;padding:0 3px;opacity:.7}
 .item.old{opacity:.7}
 .wn summary{color:var(--accent-text);font-weight:750;cursor:pointer}
 .wn textarea{width:100%;min-height:70px;margin-top:8px;border:0;border-radius:12px;background:var(--soft);padding:10px;font:inherit;resize:vertical}
@@ -539,30 +539,50 @@ function toEnglish(s) {
 // Split a block like "TABATA / 1) A / 2) B" or "A ss B" into its single exercises.
 // The owner can fix how a block was split on the import check: e.one = all one move (older data),
 // e.joins = [k, ...] joins read move k with move k+1. Cached per data/pending/toggle.
-let oneVer = 0, oneKey = null, oneSet = new Set(), joinMap = new Map();
+// e.cuts = ["text", ...] splits a read move where that text starts (for moves the reader ran together).
+let oneVer = 0, oneKey = null, oneSet = new Set(), joinMap = new Map(), cutMap = new Map();
 function scanJoins() {
   const k = [data, pending, oneVer];
   if (oneKey && k.every((x, i) => x === oneKey[i])) return;
-  oneKey = k; oneSet = new Set(); joinMap = new Map();
+  oneKey = k; oneSet = new Set(); joinMap = new Map(); cutMap = new Map();
   for (const c of [...((data && data.cycles) || []), ...(pending ? [pending] : [])]) for (const d of c.days || []) for (const e of d.exercises || []) {
     if (e.one) oneSet.add(e.name);
     else if (e.joins) joinMap.set(e.name, e.joins);
+    if (!e.one && e.cuts && e.cuts.length) cutMap.set(e.name, e.cuts);
   }
 }
 function isOne(name) { scanJoins(); return oneSet.has(name); }
 function moves(name) {
   if (isOne(name)) return [oneName(name)];
-  const raw = rawMoves(name), j = joinMap.get(name);
+  const raw = readMoves(name), j = joinMap.get(name);
   if (!j || !j.length) return raw;
   const out = [];
   raw.forEach((m, i) => { if (i && j.includes(i - 1)) out[out.length - 1] += " " + m; else out.push(m); });
+  return out;
+}
+// Read moves after the owner's cuts; out.cut has the indexes k where move k was cut off the one before it.
+function readMoves(name) {
+  scanJoins();
+  const raw = rawMoves(name), cs = cutMap.get(name);
+  const out = [];
+  out.cut = new Set();
+  if (!cs) { out.push(...raw); return out; }
+  for (const m of raw) {
+    let parts = [m.replace(/\s+/g, " ")], cutHere = [false];
+    for (const t of cs) {
+      const np = [], nc = [];
+      parts.forEach((p, i) => { const x = p.indexOf(" " + t); if (x > 0) { np.push(p.slice(0, x), p.slice(x + 1)); nc.push(cutHere[i], true); } else { np.push(p); nc.push(cutHere[i]); } });
+      parts = np; cutHere = nc;
+    }
+    parts.forEach((p, i) => { if (cutHere[i]) out.cut.add(out.length); out.push(p); });
+  }
   return out;
 }
 const oneName = (name) => nameLines(name).filter((l) => !/^(ss|poi:?|e|&)$/i.test(l)).join(" ").replace(/\*+/g, "").replace(/\s+/g, " ").trim();
 function rawMoves(name) {
   const HEADER = /^(tabata|emom|amrap|for time|triset|superset|circuito|propedeutic|\d+\s*round|nel\s*<|\d+\s*[-\/–]\s*\d+)/i;
   // Lines that only describe how to do the line above ("2 manubri", "passo stretto", "simultaneo") belong to it.
-  const CONT = /^(con\b|passo stretto|\d\s*manubri[o]?\b|simultaneo|\d\s*gamba\b|b-stance)/i;
+  const CONT = /^(con\b|passo stretto|\d\s*manubri[o]?\b|simultaneo|\d\s*gamba\b|b-stance\s*$)/i;
   const out = [];
   let sep = true, alt = false;
   for (let l of nameLines(name)) {
@@ -1003,7 +1023,7 @@ function renderSettings() {
       <li>Only got one day so far? Import it alone, then import the others later: they are added to the same cycle and nothing is lost.</li>
       <li>Check the name (e.g. Cycle 52) and tap <b>Add cycle</b>. It becomes the current cycle.</li>
       <li>Importing a cycle that already exists updates its programme and keeps what you logged.</li>
-      <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with multi-move ones in colour and a + between moves. If the count is wrong, tap a + to join the moves either side into one, or tap a · to split them again. You can set any number of moves this way.</li>
+      <li>Two moves become one card with two columns only when joined by <b>ss</b>, <b>+</b> or <b>poi</b>. Lines like "2 manubri", "passo stretto", "simultaneo", "1 gamba" or "oppure" stay part of the same exercise. Before saving, the import screen shows how each exercise was read, with multi-move ones in colour and a + between moves. If the count is wrong, tap a + to join the moves either side into one, or tap a · to split them again. You can set any number of moves this way. If two moves were read as one line, tap the ✂ next to it, then tap the ✂ just before the word where the second move starts; tap the + that appears between them to undo.</li>
     </ol></details>
     <details><summary><b>Progress</b></summary><p style="font-size:14px">One line per move (combos are split into their moves; Tabata/EMOM blocks are left out). Moves are grouped by body part (Legs, Push, Back, Shoulders, Arms, Core, Full body, Other); tap a group to open it. Moves in your current cycle have a ● and come first. Each line shows the latest value, ▲/▼ against last time, your best and a small trend line. Tap a move for its chart (weight, reps or time; filter by how it was done: normal, iso, eccentric, explosive or in combo) and its history: one card per cycle with the weeks inside (week in green, programme in grey, what you did in bold, notes below). Tap (or slide along) the chart to show just that cycle in the history below, with the week highlighted; tap Show all ✕, or the chart away from the line, to see the full history again. Old values come from your notes, so a few may be missing.</p></details>
     <details><summary><b>Share with trainer</b></summary><ol style="font-size:14px;padding-left:20px">
@@ -1563,7 +1583,7 @@ function showImport() {
       <label class="f"><span>Name</span><input id="iLabel" value="${esc(c.label)}"></label>
       <label class="f"><span>When</span><input id="iWhen" value="${esc(c.when)}"></label>
       <p class="muted" style="font-size:14px">${esc(c.duration)}</p>
-      <p class="muted" style="font-size:13px">Check how each exercise was read; the trainer's notes are in grey under each one. Exercises with more than one move are in colour. Wrong count? Tap a + to join the moves either side of it into one; tap a · to split them again.</p>
+      <p class="muted" style="font-size:13px">Check how each exercise was read; the trainer's notes are in grey under each one. Exercises with more than one move are in colour. Wrong count? Tap a + to join the moves either side of it into one; tap a · to split them again. Two moves read as one? Tap ✂ next to it, then tap ✂ where the second move starts.</p>
       ${c.days.map((d, di) => `<p><b>Day ${esc(d.id)}</b> · ${d.exercises.length} exercises</p><ul class="imp">${d.exercises.map((e, ei) => impLine(e, di, ei)).join("")}</ul>`).join("")}
       ${existing ? `<p style="font-size:14px">${esc(existing.label)} already exists. Saving ${(() => { const wk = GymImport.weeksIn(c); return wk.length ? `adds or updates week${wk.length > 1 ? "s" : ""} ${esc(wk.join(", "))}` : "updates it"; })()} and keeps its other weeks and anything you've logged.</p>` : ""}
       <div class="acts"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="import-save">${existing ? "Replace" : "Add cycle"}</button></div>`);
@@ -1573,14 +1593,22 @@ function impLine(e, di, ei) {
   const li = impMoves(e, di, ei);
   return e.desc ? li.replace(/<\/li>$/, `<div class="muted pre" style="font-size:12px;margin:2px 0 4px">${nl(e.desc)}</div></li>`) : li;
 }
+let cutPick = null;
 function impMoves(e, di, ei) {
   const { hdr } = exParts(e);
-  const raw = hdr ? [] : rawMoves(e.name);
-  if (raw.length < 2) return `<li>${hdr ? `<b>${esc(hdr)}</b>: ` : ""}${esc(exParts(e).ms.join(" + "))}</li>`;
+  if (hdr) return `<li><b>${esc(hdr)}</b>: ${esc(exParts(e).ms.join(" + "))}</li>`;
+  const raw = readMoves(e.name);
+  if (!raw.length) return `<li>${esc(exParts(e).ms.join(" + "))}</li>`;
   const j = e.one ? raw.slice(1).map((_, k) => k) : e.joins || [];
   const n = raw.length - j.length;
   const pre = /pre-?affaticante/i.test(e.name) && n > 1;
-  return `<li${n > 1 ? ' class="two"' : ""}>${raw.map((m, k) => (k ? `<button type="button" class="jn${j.includes(k - 1) ? " on" : ""}" data-act="join" data-d="${di}" data-e="${ei}" data-k="${k - 1}">${j.includes(k - 1) ? "·" : "+"}</button>` : "") + esc(m) + (pre && !k ? ' <span class="muted">(preaffaticante)</span>' : "")).join("")} <span class="muted">(${n} move${n > 1 ? "s" : ""})</span></li>`;
+  const at = `data-d="${di}" data-e="${ei}"`;
+  const piece = (m, k) => {
+    const ws = m.split(" ");
+    if (cutPick === `${di}:${ei}:${k}`) return ws.map((w, i) => (i ? `<button type="button" class="jn cut" data-act="cut" ${at} data-k="${k}" data-w="${i}">✂</button>` : "") + esc(w)).join(" ");
+    return esc(m) + (pre && !k ? ' <span class="muted">(preaffaticante)</span>' : "") + (ws.length > 1 && !e.one ? ` <button type="button" class="jn sc" data-act="cut-pick" ${at} data-k="${k}" aria-label="Split this move">✂</button>` : "");
+  };
+  return `<li${n > 1 ? ' class="two"' : ""}>${raw.map((m, k) => (k ? `<button type="button" class="jn${j.includes(k - 1) ? " on" : ""}" data-act="join" ${at} data-k="${k - 1}">${j.includes(k - 1) ? "·" : "+"}</button>` : "") + piece(m, k)).join("")} <span class="muted">(${n} move${n > 1 ? "s" : ""})</span>${cutPick && cutPick.startsWith(`${di}:${ei}:`) ? '<div class="muted" style="font-size:12px">Tap ✂ where the second move starts.</div>' : ""}</li>`;
 }
 async function onImport(files) {
   if (!files.length) return;
@@ -1589,7 +1617,7 @@ async function onImport(files) {
     const c = await GymImport.importFiles(X.CFB, files);
     const now = new Date();
     c.when = now.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-    pending = c;
+    pending = c; cutPick = null;
     const existing = findCycle(c.id);
     if (existing && existing.when) c.when = existing.when;
     showImport();
@@ -1828,11 +1856,27 @@ document.addEventListener("click", (ev) => {
     case "import-save": importSave(); break;
     case "join": {
       const e = pending && pending.days[+el.dataset.d].exercises[+el.dataset.e]; if (!e) break;
-      const raw = rawMoves(e.name), k = +el.dataset.k;
+      const raw = readMoves(e.name), k = +el.dataset.k;
+      cutPick = null;
+      // + on a boundary the owner cut: undo that cut instead of joining.
+      if (raw.cut.has(k + 1) && !(e.joins || []).includes(k) && !e.one) {
+        const t = raw[k + 1];
+        e.cuts = (e.cuts || []).filter((c) => !c.startsWith(t));
+        if (!e.cuts.length) delete e.cuts;
+        e.joins = []; oneVer++; showImport(); break;
+      }
       let j = e.one ? raw.slice(1).map((_, i) => i) : (e.joins || []).slice();
       j = j.includes(k) ? j.filter((x) => x !== k) : [...j, k].sort((a, b) => a - b);
       delete e.one; e.joins = j;
       oneVer++; showImport(); break;
+    }
+    case "cut-pick": { const key = `${D.d}:${D.e}:${D.k}`; cutPick = cutPick === key ? null : key; showImport(); break; }
+    case "cut": {
+      const e = pending && pending.days[+D.d].exercises[+D.e]; if (!e) break;
+      const m = readMoves(e.name)[+D.k]; if (!m) break;
+      const t = m.split(" ").slice(+D.w).join(" ");
+      e.cuts = [...(e.cuts || []).filter((c) => c !== t), t]; e.joins = []; delete e.one;
+      cutPick = null; oneVer++; showImport(); break;
     }
     case "prog": ui.prog = D.key; ui.metric = null; ui.variant = "All"; saveUI(); render(); window.scrollTo(0, 0); break;
     case "prog-back": ui.prog = null; saveUI(); render(); break;
