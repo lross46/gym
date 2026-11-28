@@ -1189,14 +1189,16 @@ function block(e, w) {
 }
 const setCount = (e, w) => { const b = block(e, w), p = !b && preOf(e, w); return b ? b.rounds : p ? p.rounds + p.n : parseSets(w.sets) || 1; };
 // A move gets a kg box when it uses weights, or was logged with some.
-const loadedMv = (w, lt, m) => LOADED_RE.test(m) || kgList(w, m).some(Boolean) || (lt && kgOf(lt.w, m) != null);
+const loadedMv = (w, lt, m) => isLoaded(m) || kgList(w, m).some(Boolean) || (lt && kgOf(lt.w, m) != null);
 function setsDone(ei, w, e) {
   if (wo.sets[ei] == null) wo.sets[ei] = w.done ? (e ? setCount(e, w) : parseSets(w.sets) || 1) : 0;
   return wo.sets[ei];
 }
 const ltHtml = (lt, style = "") => (lt ? `<p class="muted" style="font-size:13px;margin:10px 2px 0;${style}"><b>Last time</b>${lt.other ? ` (${esc(lt.other.toLowerCase())})` : ""} · ${esc(lt.label)}<br>${esc(logText(lt.w).slice(0, 160))}</p>` : "");
 // One big weight box per move, with −/+ in 2.5 kg steps; the placeholder is last time's weight.
-const LOADED_RE = /manubr|sovracc|disc|kettle|dumb|bilanc|pes[oi]|weight|thruster|snatch|goblet|rdl|press|curl|rematore|row|stacc|swing|croci|alzate|affondi|squat|step up|hip thrust|ponte|kick ?back|lento|spinte|turkish|clean/i;
+const LOADED_RE = /manubr|sovracc|disc|kettle|dumb|bilanc|pes[oi]|weight|thruster|snatch|goblet|rdl|press|curl|rematore|row|stacc|swing|croci|alzate|raise|affondi|squat|step up|hip thrust|ponte|kick ?back|lento|spinte|turkish|clean/i;
+// Jumping moves (jump squat, jump lunges, burpees) are bodyweight unless the name says a weight ("Jump lunges 1 manubrio").
+const isLoaded = (m) => /manubr|sovracc|disc|kettle|dumb|bilanc|pes[oi]|weight/i.test(m) || (LOADED_RE.test(m) && !/jump|salto|burpee/i.test(m));
 function weightBoxes(e, w, lt, ei, skip = []) {
   const ms = moves(e.name).filter((m) => !skip.includes(m));
   const open = wo.kgOpen || (wo.kgOpen = {});
@@ -1204,7 +1206,7 @@ function weightBoxes(e, w, lt, ei, skip = []) {
     const val = m ? (w.kgs && w.kgs[m]) || "" : w.kg || "";
     const last = lt ? kgOf(lt.w, m || undefined) : null;
     // Bodyweight moves in a combo (push ups, leg raises) get a small "+ kg" button instead of a big box.
-    if (m && !val && last == null && !LOADED_RE.test(m) && !open[ei + m]) return `<button type="button" class="addkg" data-act="kg-open" data-k="${esc(ei + m)}">+ kg ${esc(m)}</button>`;
+    if (m && !val && last == null && !isLoaded(m) && !open[ei + m]) return `<button type="button" class="addkg" data-act="kg-open" data-k="${esc(ei + m)}">+ kg ${esc(m)}</button>`;
     return `<div class="wt"><div class="grow"><small>${esc(m || "Weight")}${last != null ? ` · last ${fmtNum(last)} kg` : ""}</small>
       <div class="kg"><input data-wf="kg" data-ei="${ei}"${m ? ` data-mv="${esc(m)}"` : ""} inputmode="decimal" value="${esc(val)}" placeholder="${last != null ? fmtNum(last) : "0"}" style="width:${String(val || (last != null ? fmtNum(last) : "0")).length + 0.7}ch" aria-label="Weight in kg"><span class="u">kg</span></div></div>
       <button type="button" data-act="kg-adj" data-d="-2.5" aria-label="Less weight">−</button><button type="button" data-act="kg-adj" data-d="2.5" aria-label="More weight">+</button></div>`;
@@ -1230,7 +1232,7 @@ function kgCols(e, w, lt) {
   if (ms.length < 2) return [null];
   if (exParts(e).hdr) return [];
   if (ms.length === 2) return ms;
-  const L = ms.filter((m) => LOADED_RE.test(m) || (w.kgs && w.kgs[m]) || (lt && kgOf(lt.w, m) != null));
+  const L = ms.filter((m) => isLoaded(m) || (w.kgs && w.kgs[m]) || (lt && kgOf(lt.w, m) != null));
   return L.length <= 2 ? L : [];
 }
 function setKgPh(w, lt, j, m) {
@@ -1279,7 +1281,7 @@ function woCard(c, e, ei, i, total) {
   const bk = block(e, w);
   if (bk) {
     // Kg box only for the loaded moves (e.g. Push press), none for bodyweight ones.
-    const skip = bk.mvs.filter((m) => !LOADED_RE.test(m) && !(w.kgs && w.kgs[m]));
+    const skip = bk.mvs.filter((m) => !isLoaded(m) && !(w.kgs && w.kgs[m]));
     const rows = bk.kind === "time"
       ? `<div class="sr${dn ? " ok" : ""}" style="grid-template-columns:1fr 90px 42px"><span>Your time</span><input data-wf="res" data-ei="${ei}" inputmode="text" value="${esc(w.res || "")}" placeholder="${esc(lt && lt.w.res ? lt.w.res : "mm:ss")}" aria-label="Your time"><button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="0" aria-label="Done">${dn ? "✓" : ""}</button></div>`
       : `<div class="sr hd" style="grid-template-columns:24px 1fr 50px 42px"><span>RD</span><span>MOVE</span><span>REPS</span><span></span></div>` + Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" style="grid-template-columns:24px 1fr 50px 42px"><b>${bk.rd ? (j % bk.mvs.length ? "" : bk.rd(j)) : j + 1}</b><span style="font-size:14px;line-height:1.2">${esc(bk.mvs[j % bk.mvs.length] || "")}</span>
