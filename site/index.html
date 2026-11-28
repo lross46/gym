@@ -998,7 +998,7 @@ function renderSettings() {
       <li>Empty boxes show a suggestion in grey: kg from your previous set (or last time), reps from the programme. Tapping ✓ keeps them; type over to change.</li>
       <li>Combined exercises (supersets) have two kg boxes: <b>Ex 1</b> and <b>Ex 2</b>, matching the numbers in the title. Leave 0 or empty for bodyweight.</li>
       <li><b>Pre-fatigue</b> ("2x20; 3"): the card shows ① the pre-fatigue rounds (2 rows of 20), done once before set 1 with a 30-second rest after each round (the last one too), then ② the 3 sets of the main move. Found automatically in every imported programme. Sessions trained before 27 Oct 2026 keep the old layout (pre-fatigue before every set).</li>
-      <li>Tabata and EMOM show one row per round with that round's move (6' of 20" on / 10" off = 12 rounds). "For time" blocks just ask for your time.</li>
+      <li>Tabata and EMOM show one row per round with that round's move (6' of 20" on / 10" off = 12 rounds). Circuits show one row per move in each round: a timed circuit like 3 rounds of 40" on / 20" off runs every move on the Intervals timer (40" work, then 20" rest before the next move; 3 rounds × 3 moves = 9'). "For time" blocks just ask for your time.</li>
       <li><b>LAST</b> shows what you did last time on the same variant (1" iso with 1" iso).</li>
       <li><b>✎ Notes</b> opens a free box for notes on that exercise this week. In the Excel export they go under the kg and reps.</li>
       <li>Your most recent notes on the same exercise (earlier week, or the last cycle that had it) show on the card as <b>Your notes · Week N</b>, so you see what you planned to change.</li>
@@ -1147,6 +1147,27 @@ function endWorkout() {
   flushSync(); render();
 }
 // Tabata and EMOM blocks: one row per round, the moves taking turns ("6'" of 20" on / 10" off = 12 rounds).
+// A circuit: "Circuito …" / "3 round" header, the rounds in the sets ("3", "3x", "3 (9')").
+// Timed when the header says "40\" on 20\" off" or the reps are a time ("Max in 40\"", "40\" max reps"):
+// each move is worked for that long, then the rest ("20\"", or the header's off) before the next move.
+function circuitOf(e, w, mvs) {
+  const l0 = normQuotes(nameLines(e.name)[0] || "");
+  if (!/^(circuito|circuit|\d+\s*round)|\bcircuit/i.test(l0) || /amrap|for time|nel\s*</i.test(e.name) || mvs.length < 2) return null;
+  const rd = +((String(w.sets || "").match(/^\s*x?\s*(\d+)/i) || [])[1] || 0);
+  if (!(rd > 1 && rd <= 20)) return null;
+  const hOn = l0.match(/(\d+)\s*"\s*on/i), hOff = l0.match(/(\d+)\s*"\s*off/i);
+  const repsT = normQuotes(w.reps), restT = normQuotes(w.rest);
+  const on = hOn ? +hOn[1] : !/\+/.test(repsT) && parseTime(repsT) && !/^\s*\d+\s*$/.test(repsT) ? parseTime(repsT) : 0;
+  const off = on ? (parseTime(restT) != null && !/[-–]/.test(restT) ? parseTime(restT) : hOff ? +hOff[1] : 0) : 0;
+  const n = mvs.length, reps = String(w.reps || "").split("+").map((x) => x.trim());
+  const tot = on ? Math.round((rd * n * (on + off)) / 60 * 10) / 10 : 0;
+  return {
+    kind: "circuit", mvs, rounds: rd * n, laps: rd, on, off,
+    plan: on ? `${rd} rounds of ${n} moves · ${on}s work, ${off}s rest each${tot ? ` · ${tot} min` : ""} · max reps` : `${rd} rounds of ${n} moves, one after another`,
+    target: (j) => (on || reps.length !== n ? "" : (reps[j % n].match(/\d+/) || [""])[0]),
+    rd: (j) => Math.floor(j / n) + 1,
+  };
+}
 function block(e, w) {
   const nm = e.name + " " + (e.desc || ""), total = parseTime(w.sets);
   // Numbered lines keep repeats (EMOM "1) One arm thruster / 2) One arm thruster" = one per arm).
@@ -1160,6 +1181,9 @@ function block(e, w) {
     const rounds = total ? Math.max(1, Math.round(total / 60)) : 8, reps = String(w.reps || "").split("+").map((x) => x.trim());
     return { kind: "emom", mvs, rounds, plan: `${rounds} minutes · one move each minute, in order`, target: (r) => (reps[r % reps.length].match(/\d+/) || [""])[0] };
   }
+  // Timed or rep circuits ("Circuito 40\" on 20\" off", sets "3 (9')"): rounds × moves rows, one move after another.
+  const ci = circuitOf(e, w, mvs);
+  if (ci) return ci;
   if (exParts(e).hdr) return { kind: "time", mvs, rounds: 1, plan: "Do it as fast as you can, then type your time" };
   return null;
 }
@@ -1258,7 +1282,7 @@ function woCard(c, e, ei, i, total) {
     const skip = bk.mvs.filter((m) => !LOADED_RE.test(m) && !(w.kgs && w.kgs[m]));
     const rows = bk.kind === "time"
       ? `<div class="sr${dn ? " ok" : ""}" style="grid-template-columns:1fr 90px 42px"><span>Your time</span><input data-wf="res" data-ei="${ei}" inputmode="text" value="${esc(w.res || "")}" placeholder="${esc(lt && lt.w.res ? lt.w.res : "mm:ss")}" aria-label="Your time"><button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="0" aria-label="Done">${dn ? "✓" : ""}</button></div>`
-      : `<div class="sr hd" style="grid-template-columns:24px 1fr 50px 42px"><span>RD</span><span>MOVE</span><span>REPS</span><span></span></div>` + Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" style="grid-template-columns:24px 1fr 50px 42px"><b>${j + 1}</b><span style="font-size:14px;line-height:1.2">${esc(bk.mvs[j % bk.mvs.length] || "")}</span>
+      : `<div class="sr hd" style="grid-template-columns:24px 1fr 50px 42px"><span>RD</span><span>MOVE</span><span>REPS</span><span></span></div>` + Array.from({ length: n }, (_, j) => `<div class="sr${j < dn ? " ok" : ""}" style="grid-template-columns:24px 1fr 50px 42px"><b>${bk.rd ? (j % bk.mvs.length ? "" : bk.rd(j)) : j + 1}</b><span style="font-size:14px;line-height:1.2">${esc(bk.mvs[j % bk.mvs.length] || "")}</span>
       <input data-wf="rep" data-ei="${ei}" data-i="${j}" inputmode="numeric" value="${esc(reps[j] || "")}" placeholder="${esc(bk.target(j))}" aria-label="Reps round ${j + 1}">
       <button type="button" class="ck" data-act="set" data-ei="${ei}" data-i="${j}" aria-label="Round ${j + 1} done">${j < dn ? "✓" : ""}</button></div>`).join("");
     return `<section class="wl cur" id="wl${ei}">
@@ -1416,8 +1440,13 @@ function timerDefaults() {
   const item = list[wo.step - 1];
   if (!item) { T.mode = "count"; T.secs = T.secs || 60; return; }
   const { e } = item, w = e.weeks[wo.k];
-  const nm = e.name + " " + (e.desc || "");
-  if (/tabata/i.test(nm)) {
+  const nm = e.name + " " + (e.desc || ""), bk = block(e, w);
+  T.names = null;
+  if (bk && bk.kind === "circuit") {
+    // Timed circuit: one work interval per move per round, the rest after each move. Rep circuit: rest timer.
+    if (bk.on) { T.mode = "int"; T.work = bk.on; T.rest = bk.off; T.rounds = bk.rounds; T.names = bk.mvs; }
+    else { T.mode = "rest"; T.secs = parseTime(w.rest) || 60; }
+  } else if (/tabata/i.test(nm)) {
     T.mode = "int"; T.work = parseTime(w.reps) || 20; T.rest = parseTime(w.rest) || 10;
     const mins = parseTime(w.sets); T.rounds = mins ? Math.max(1, Math.round(mins / (T.work + T.rest))) : 8;
   } else if (/emom/i.test(nm)) {
@@ -1438,7 +1467,10 @@ function segments() {
   if (T.mode === "count") return [lead, { label: "Go", secs: T.secs, kind: "work" }];
   if (T.mode === "int") {
     const s = [lead];
-    for (let r = 1; r <= T.rounds; r++) { s.push({ label: `Work · round ${r}/${T.rounds}`, secs: T.work, kind: "work" }); if (r < T.rounds && T.rest > 0) s.push({ label: `Rest · round ${r}/${T.rounds}`, secs: T.rest, kind: "rest" }); }
+    // Circuits name the move: "Jump squat · round 2/3", then "Rest · next: Hollow rock".
+    const nm = T.names && T.names.length && T.rounds % T.names.length === 0 ? T.names : null, laps = nm ? T.rounds / nm.length : 0;
+    const lab = (r) => (nm ? `${nm[(r - 1) % nm.length]} · round ${Math.ceil(r / nm.length)}/${laps}` : `Work · round ${r}/${T.rounds}`);
+    for (let r = 1; r <= T.rounds; r++) { s.push({ label: lab(r), secs: T.work, kind: "work" }); if (r < T.rounds && T.rest > 0) s.push({ label: nm ? `Rest · next: ${nm[r % nm.length]}` : `Rest · round ${r}/${T.rounds}`, secs: T.rest, kind: "rest" }); }
     return s;
   }
   if (T.mode === "emom") return [lead, ...Array.from({ length: T.rounds }, (_, i) => ({ label: `Minute ${i + 1}/${T.rounds}`, secs: T.period, kind: "work" }))];
@@ -1674,7 +1706,7 @@ function setLines(w, e) {
   const n = Math.max(reps.length, ...kg.map(([, a]) => (a.some(Boolean) ? a.length : 0)), ...(rm ? Object.values(rm).map((a) => (a.some(Boolean) ? a.length : 0)) : []));
   if (n < 2) return "";
   return Array.from({ length: n }, (_, j) => {
-    if (bk && bk.kind !== "time") return `Round ${j + 1}: ${bk.mvs[j % bk.mvs.length]}${reps[j] ? ` · ${reps[j]} reps` : ""}`;
+    if (bk && bk.kind !== "time") return `Round ${bk.rd ? bk.rd(j) : j + 1}: ${bk.mvs[j % bk.mvs.length]}${reps[j] ? ` · ${reps[j]} reps` : ""}`;
     const k = kg.map(([m, a]) => { const t = parseFloat(String(a[j] || "").replace(",", ".")) > 0 ? `${a[j]} kg` : "bodyweight"; return (m ? `${m} ${t}` : t) + (rm && rm[m][j] ? ` × ${rm[m][j]}` : ""); }).join(" + ");
     return `Set ${j + 1}: ${[k, reps[j] && `${reps[j]} reps`].filter(Boolean).join(" · ")}`;
   }).join("\n");
